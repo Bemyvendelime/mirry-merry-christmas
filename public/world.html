@@ -1,0 +1,11 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#17243a"><title>별빛광장 · OSC</title><link rel="icon" href="/star.svg"><link rel="stylesheet" href="world.css"><script type="importmap">{"imports":{"three":"/vendor/three.js"}}</script></head>
+<body><main id="game" aria-label="별빛광장 3D 월드"></main>
+<section id="welcome"><div class="photo"></div><div class="shade"></div>
+<header class="mast"><span class="brandstar">✴</span><span>OSC <span class="slash">/</span> WINTER WORKSHOP</span></header>
+<div class="introwrap"><div class="titleblock"><div class="kicker"><i></i> THE STARLIT COURTYARD</div><h1>별빛광장</h1><p>눈 내린 광장에서 만나, 우리 팀의 크리스마스를 만들어요.</p></div>
+<form id="join" class="glass"><label for="name">월드에서 사용할 별명</label><input id="name" required maxlength="12" autocomplete="nickname" placeholder="별명 입력" /><fieldset><legend>코트 색상</legend><div id="colors"></div></fieldset><button id="enter" class="primary">광장에 입장하기</button><output id="joinStatus" role="status"></output></form></div>
+<footer><span>OSC · CHRISTMAS MARKET</span><button id="instructions">조작 방법</button></footer></section>
+<section id="hud" hidden><div class="gamehead"><div class="nameplate"><b>✴</b><div><small>OSC WINTER WORKSHOP</small><strong id="location">별빛광장</strong></div></div><div class="actions"><span id="presence">연결 중</span><button id="openmap">지도</button><button id="help">도움말</button></div></div>
+<div id="notice" role="status"></div><div class="lower"><span class="keys">W A S D · 이동　 /　 드래그 · 시점</span><button id="editNearby" hidden>부지 꾸미기</button></div><div id="stick" aria-label="이동 조이스틱"><i></i></div></section>
+<dialog id="panel"><div class="dialogtop"><small>OSC · WINTER WORKSHOP</small><button id="close" aria-label="닫기">×</button></div><div id="contents"></div></dialog>
+<script type="module" src="interface.js"></script></body></html>
