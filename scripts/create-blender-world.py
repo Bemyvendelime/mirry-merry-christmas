@@ -152,9 +152,9 @@ for x in (-25,25):
         ellipse("Flush strip of kerbstones",ground,(x,8),(15+delta,16+delta),.15,.056,edge)
     box("Plaza walk connector", stone,ground,(x*.53,0,.024),(20,6,.07))
 shape("Circular gathering plaza","tube",stone,ground,(0,0,.025),(13,10,.085))
-ellipse("Inner brick circle", ground,(0,0),(4,4),.17,.082,brick)
-shape("Raised fir planter","tube",edge,festival,(0,0,.23),(3.1,3.1,.48))
-shape("Snow inside planter","tube",snow,festival,(0,0,.48),(2.96,2.96,.065))
+ellipse("Inner brick circle", ground,(0,0),(6.4,6.4),.17,.082,brick)
+shape("Raised fir planter","tube",edge,festival,(0,0,.23),(6.2,6.2,.48))
+shape("Snow inside planter","tube",snow,festival,(0,0,.48),(6.03,6.03,.065))
 
 # Load the same pad coordinates and visual yaw exported by the browser world.
 source = ROOT / "public" / "layout.js"
@@ -170,10 +170,10 @@ for entry in plot_data:
 # Layered branch crowns with a distinct snow cap above each needle layer.
 def fir(name,x,y,height,col,decorated=False):
     shape(name+" • trunk","tube",bark,col,(x,y,height*.18),(.032*height,.032*height,height*.38))
-    for li in range(8 if decorated else 4):
-        n=8 if decorated else 4
+    for li in range(16 if decorated else 4):
+        n=16 if decorated else 4
         level=li/(n-.25)
-        r=height*.28*(1-level*.88)
+        r=height*(.23 if decorated else .28)*(1-level*.88)
         z=height*(.10+.77*level)
         tier_h=height*(.30 if decorated else .39)*(1-level*.5)
         rot=li*.91
@@ -190,20 +190,20 @@ def fir(name,x,y,height,col,decorated=False):
                 mesh_cache[key]=geometry(name+" • bough geometry",pts,[(0,j+1,(j+1)%32+1) for j in range(32)],snow if cap else evergreen[li%3])
             object_with_data(name+" • "+("snow cap" if cap else "bough"),mesh_cache[key],col,(x,y,z))
     if decorated:
-        for i in range(196):
-            t=i/195
-            a=TAU*7.6*t
-            r=height*(.266*(1-t)+.018)
-            shape("Honey fairy light","ball",gold,col,(x+math.cos(a)*r,y+math.sin(a)*r,.15*height+t*height*.79),(.051,)*3)
+        for i in range(1100):
+            t=i/1099
+            a=TAU*18*t
+            r=height*(.218*(1-t)+.012)
+            shape("Honey fairy light","ball",gold,col,(x+math.cos(a)*r,y+math.sin(a)*r,.15*height+t*height*.79),(.069,)*3)
 
-fir("Plaza fir",0,0,9.4,festival,True)
+fir("Plaza fir",0,0,33.7,festival,True)
 points=[(0,-.24,0),(0,.24,0)]
 for i in range(16):
     a=math.pi/2 + TAU*i/16
-    r=.97 if i%2==0 else .40
+    r=1.64 if i%2==0 else .65
     points.append((math.cos(a)*r,0,math.sin(a)*r))
 faces=[(0,2+i,2+(i+1)%16) for i in range(16)]+[(1,2+(i+1)%16,2+i) for i in range(16)]
-object_with_data("Folded paper star",geometry("Eight-point lantern",points,faces,star_mat),festival,(0,0,10.05))
+object_with_data("Folded paper star",geometry("Eight-point lantern",points,faces,star_mat),festival,(0,0,34.36))
 
 def area_light(name, typ, xyz, color, power, radius, target=None):
     data=bpy.data.lights.new(name,typ)
@@ -317,8 +317,8 @@ area_light("Blue sky softbox",'AREA',(-22,-8,48),(.63,.76,1),26000,47,(0,0,0))
 area_light("Sunset rim",'AREA',(8,26,33),(1,.66,.53),19000,29,(0,0,0))
 area_light("Fir canopy glow",'POINT',(0,-2,6.3),(1,.56,.23),430,2.4)
 camera_data=bpy.data.cameras.new("Main reference camera")
-camera=object_with_data("Camera • entrance aerial",camera_data,studio,(0,-61,35))
-camera.rotation_euler=(Vector((0,4,2.1))-camera.location).to_track_quat('-Z','Y').to_euler()
+camera=object_with_data("Camera • entrance aerial",camera_data,studio,(0,-64,13))
+camera.rotation_euler=(Vector((0,2,16.4))-camera.location).to_track_quat('-Z','Y').to_euler()
 camera_data.lens=33;scene.camera=camera
 scene.render.engine='CYCLES';scene.cycles.samples=32
 scene.render.resolution_x=1600;scene.render.resolution_y=900;scene.render.resolution_percentage=100
@@ -330,5 +330,8 @@ for screen in bpy.data.screens:
             area.spaces.active.shading.color_type='MATERIAL'
             area.spaces.active.shading.light='STUDIO'
             area.spaces.active.overlay.show_overlays=False
+from runpy import run_path
+finish_world=run_path(str(ROOT / 'scripts' / 'winter-surface-detail.py'))['finish_world']
+finish_world(scene, ASSETS)
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(ASSETS/"starlit-courtyard.blend"),compress=True)
