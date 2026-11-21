@@ -68,7 +68,9 @@ function sampleWorld(scene) {
         const samples = Math.floor(twiceArea * .5 * density + random());
         if (!samples) continue;
         normal.multiplyScalar(1 / twiceArea);
-        tangent.copy(u.lengthSq() > v.lengthSq() ? u : v).normalize();
+        tangent.copy(u.lengthSq() > v.lengthSq() ? u : v);
+        const crossWidth = twiceArea / Math.max(.00001, tangent.length());
+        tangent.normalize();
         // Fine timber remains underneath the flecks. Offset along the face
         // keeps their nearby outlines independent of depth precision.
         const relief = fixture ? .012 : 0;
@@ -79,7 +81,8 @@ function sampleWorld(scene) {
           tangents.push(tangent.x, tangent.y, tangent.z);
           normals.push(normal.x, normal.y, normal.z);
           const size = sigma*(.8+.37*random());
-          shapes.push(size*1.45, size*.79, size*.33);
+          const width = fixture ? Math.min(size*.79, Math.max(.006,crossWidth*.42)) : size*.79;
+          shapes.push(size*1.45, width, Math.min(size*.33,width*.53));
           if (coloursAttr && material.vertexColors) {
             const wa = 1-r;
             vertexColor.setRGB(
