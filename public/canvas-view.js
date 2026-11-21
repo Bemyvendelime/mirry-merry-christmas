@@ -1,13 +1,14 @@
 import * as T from 'three';
 import {plots} from './layout.js';
+import {paintFirSplats,paintPixelPalette} from './software-pixelart.js';
 import {createLandscape} from './software-landscape.js';
 
 // CPU perspective renderer for browsers without a WebGL context. Camera pose, entity
 // positions, editable slots, and multiplayer state are shared with the WebGL scene.
 export function createCanvasView(root) {
   const make=(w,h=w)=>Object.assign(document.createElement('canvas'),{width:w,height:h});
-  const canvas=make(8), ctx=canvas.getContext('2d',{alpha:false}), scene=new T.Scene();
-  root.replaceChildren(canvas);let W=8,H=8,actors=[],objects=[],loop=null,raf=0;
+  const canvas=make(8), ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true}), scene=new T.Scene();
+  root.replaceChildren(canvas);let style='raytracing',viewW=8,viewH=8,W=8,H=8,actors=[],objects=[],loop=null,raf=0;
   let seed=49285;const rnd=()=>((seed=Math.imul(1664525,seed)+1013904223>>>0)/4294967296),tau=Math.PI*2;
   const textures=new Map(),props=[], pi=Math.PI;
   const treeRect=make(390,630),tree=treeRect.getContext('2d');
@@ -30,7 +31,7 @@ export function createCanvasView(root) {
     const a=(j/7+level*.091)*tau,levelY=4.1+level*3.18,rad=6.8*(1-levelY/36)**.87;
     crownBranches.push({x:Math.cos(a)*rad,z:Math.sin(a)*rad,y:levelY-.75+rnd()*.48,h:2.4-level*.10,w:4.3-level*.28,variant:(j+level)%4,k:'crown'});
   }
-  const drawLandscape=createLandscape(props);
+  const drawLandscape=createLandscape(props,textures);
   const detailed=new Set();
   function portrait(file,kind){const img=new Image();img.onload=()=>{const aspect=img.naturalWidth/img.naturalHeight;const h=Math.min(kind==='tree'?1800:1200,img.naturalHeight),w=Math.round(h*aspect);const c=make(w,h),q=c.getContext('2d',{willReadFrequently:true});q.drawImage(img,0,0,w,h);const rgba=q.getImageData(0,0,w,h).data;let l=w,r=0,t=h,b=0;for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){if(rgba[(y*w+x)*4+3]>25){l=Math.min(l,x);r=Math.max(r,x);t=Math.min(t,y);b=Math.max(b,y);}}if(b<=t||r<=l)return;const pad=3;l=Math.max(0,l-pad);r=Math.min(w-1,r+pad);t=Math.max(0,t-pad);b=Math.min(h-1,b+pad);const cropped=make(r-l+1,b-t+1);cropped.getContext('2d').drawImage(c,l,t,cropped.width,cropped.height,0,0,cropped.width,cropped.height);textures.set(kind,cropped);detailed.add(kind);
       if(kind==='tree'){
@@ -61,9 +62,9 @@ export function createCanvasView(root) {
     c.putImageData(im,0,0);walkerCache.set(color,b);return b;}
   function decor(k){const b=make(100,130),c=b.getContext('2d');if(k==='pine'){c.fillStyle='#726253';c.fillRect(45,105,10,25);for(let j=0;j<4;j++)poly(c,[[50,8+j*17],[50-(19+j*8),49+j*22],[50+(19+j*8),49+j*22]],j%2?'#415b4d':'#526e5a');}else if(k==='snowman'){for(const [y,r] of [[101,28],[65,23],[33,17]]){c.beginPath();c.arc(50,y,r,0,tau);c.fillStyle='#e9edf3';c.fill();c.strokeStyle='#acb7c7';c.stroke();}c.fillStyle='#47404b';c.fillRect(34,15,32,4);c.fillRect(41,1,18,16);c.fillRect(44,30,3,3);c.fillRect(55,30,3,3);c.fillStyle='#9a4d50';c.fillRect(33,47,35,5);}else if(k==='bench'){c.fillStyle='#69534c';c.fillRect(8,61,84,11);c.fillRect(8,76,84,8);c.fillRect(8,94,84,10);c.fillStyle='#494852';c.fillRect(16,65,6,61);c.fillRect(78,65,6,61);}return b;}
   for(const k of ['pine','bench','snowman'])textures.set(k,decor(k));
-  return {scene,domElement:canvas,setPixelRatio(){},setSize(w,h){W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const factor=Math.min(1,1280/W,850/H);canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list){actors=list||[];},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
-    camera.updateMatrixWorld();const m=camera.matrixWorld.elements,pr=camera.projectionMatrix.elements,f=pr[5];drawLandscape(ctx,m,pr,W,H);
-    const draw=props.slice();const treeDistance=Math.hypot(m[12],m[14]);const closeFoliage=Math.max(0,Math.min(1,(22-treeDistance)/12));if(closeFoliage&&detailed.has('tree'))draw.push(...crownBranches);for(const [idx,a] of actors.entries()){const rear=Math.cos(a.yaw||0)*(m[14]-a.z)+Math.sin(a.yaw||0)*(m[12]-a.x)>.0;const sprite=idx===0||rear?dressedWalker(a.color):avatar(a.color);const bob=a.moving?.015*Math.abs(Math.sin(performance.now()*.008+idx*.21)):0;draw.push({x:a.x,z:a.z,h:1.85,w:1.85*sprite.width/sprite.height,bob,sprite,label:idx?(a.name||a.nickname):''});}for(const obj of objects){if(obj.kind==='empty')continue;const p=plots.find(q=>q.id===obj.plot);if(!p)continue;const lx=(obj.slot%3-1)*1.8,lz=(Math.floor(obj.slot/3)-1)*1.7;draw.push({x:p.x+lx*Math.cos(p.angle)+lz*Math.sin(p.angle),z:p.z-lx*Math.sin(p.angle)+lz*Math.cos(p.angle),h:obj.kind==='bench'?1.4:2,w:obj.kind==='bench'?1.9:1.3,k:obj.kind==='light'?'lamp':obj.kind});}
+  return {scene,domElement:canvas,setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520/W,330/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list){actors=list||[];},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
+    camera.updateMatrixWorld();const m=camera.matrixWorld.elements,pr=camera.projectionMatrix.elements,f=pr[5];drawLandscape(ctx,m,pr,W,H,style);
+    const draw=props.slice();const treeDistance=Math.hypot(m[12],m[14]);const closeFoliage=Math.max(0,Math.min(1,(22-treeDistance)/12));if(style!=='gaussian-pixelart'&&closeFoliage&&detailed.has('tree'))draw.push(...crownBranches);for(const [idx,a] of actors.entries()){const rear=Math.cos(a.yaw||0)*(m[14]-a.z)+Math.sin(a.yaw||0)*(m[12]-a.x)>.0;const sprite=idx===0||rear?dressedWalker(a.color):avatar(a.color);const bob=a.moving?.015*Math.abs(Math.sin(performance.now()*.008+idx*.21)):0;draw.push({x:a.x,z:a.z,h:1.85,w:1.85*sprite.width/sprite.height,bob,sprite,label:idx?(a.name||a.nickname):''});}for(const obj of objects){if(obj.kind==='empty')continue;const p=plots.find(q=>q.id===obj.plot);if(!p)continue;const lx=(obj.slot%3-1)*1.8,lz=(Math.floor(obj.slot/3)-1)*1.7;draw.push({x:p.x+lx*Math.cos(p.angle)+lz*Math.sin(p.angle),z:p.z-lx*Math.sin(p.angle)+lz*Math.cos(p.angle),h:obj.kind==='bench'?1.4:2,w:obj.kind==='bench'?1.9:1.3,k:obj.kind==='light'?'lamp':obj.kind});}
     let items=[];const inv=camera.matrixWorldInverse.elements;function project(x,y,z){const depth=-(inv[2]*x+inv[6]*y+inv[10]*z+inv[14]);if(depth<.25)return null;return {x:W/2+(inv[0]*x+inv[4]*y+inv[8]*z+inv[12])*pr[0]/depth*W*.5,y:H/2-(inv[1]*x+inv[5]*y+inv[9]*z+inv[13])*f/depth*H*.5,d:depth};}
     // Keep each branch band in world space. At extreme pitch the top and bottom
     // can lie on opposite sides of the near plane; visible bands are still drawn.
@@ -115,7 +116,7 @@ export function createCanvasView(root) {
     for(const c of curbs)if(c.depth>=(project(0,0,0)?.d||0))drawCurb(c);
     for(const {o,base,top,tall,ww,tex,isLamp} of items){
       if(o.k==='tree'||o.k==='crown'){
-        if(o.k==='crown'){ctx.globalAlpha=closeFoliage*.90;drawCrown(o,tex);}else drawFirBand(o,tex);ctx.globalAlpha=1;
+        if(o.k==='crown'){ctx.globalAlpha=closeFoliage*.90;drawCrown(o,tex);}else if(style==='gaussian-pixelart'){drawFirBand(o,tex);ctx.globalAlpha=.83;paintFirSplats(ctx,tex,camera,project,W,H,H*f*.5);}else drawFirBand(o,tex);ctx.globalAlpha=1;
         if(o.k==='tree'){
           const star=project(o.x,o.h*.969,o.z);if(star&&star.d>1){const rad=Math.max(2,Math.min(72,H*f*.74/star.d));light(ctx,star.x,star.y,rad,'rgba(255,204,110,.24)');}
         }continue;
@@ -127,5 +128,6 @@ export function createCanvasView(root) {
       if(o.label&&base.d<20){ctx.font='600 12px system-ui';ctx.textAlign='center';const lw=ctx.measureText(o.label).width+12;ctx.fillStyle='#343545aa';ctx.fillRect(base.x-lw/2,top.y-16,lw,16);ctx.fillStyle='#fff5e2';ctx.fillText(o.label,base.x,top.y-4);}}
     for(const c of curbs)if(c.depth<(project(0,0,0)?.d||0))drawCurb(c);
     const sec=performance.now()*.001;for(const v of motes){const q=project(v.x+Math.sin(sec*.22+v.z)*.32,((v.y-sec*(.18+v.s*.12))%12+12)%12,v.z);if(!q||q.d>46||q.x<0||q.x>W||q.y<0||q.y>H)continue;const radius=Math.max(.48,Math.min(1.6,8/q.d));ctx.fillStyle='rgba(244,244,244,'+(.22+v.s*.31)+')';ctx.beginPath();ctx.arc(q.x,q.y,radius,0,tau);ctx.fill();}
+    if(style==='gaussian-pixelart')paintPixelPalette(ctx,W,H);
   }};
 }

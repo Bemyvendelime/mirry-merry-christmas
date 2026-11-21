@@ -5,18 +5,42 @@ const kinds={empty:'빈 칸',bench:'벤치',snowman:'눈사람',light:'조명',p
 const saved=(k,f='')=>{try{return localStorage.getItem('osc-'+k)||f}catch{return f}};
 const save=(k,v)=>{try{localStorage.setItem('osc-'+k,v)}catch{}};
 let color=saved('color',colors[0][0]),world,state={players:[],objects:[],claimed:[]},nearest=null,online=false,timer,settings;
+const renderViews={'raytracing':'빛 반사','gaussian-pixelart':'가우시안 픽셀','classic':'기본'};
+const requestedView=new URLSearchParams(location.search).get('view');
+let view=Object.hasOwn(renderViews,requestedView)?requestedView:saved('view','raytracing');
+if(!Object.hasOwn(renderViews,view))view='raytracing';
+function rememberView(value){
+  view=value;save('view',value);
+  for(const radio of document.querySelectorAll('#join input[name=view]'))radio.checked=radio.value===value;
+}
+for(const radio of document.querySelectorAll('#join input[name=view]')){
+  radio.checked=radio.value===view;
+  radio.onchange=()=>{if(radio.checked)rememberView(radio.value)};
+}
+$('appearance').onclick=()=>{
+  show('<h2>광장 표현</h2><div class="view-menu"></div><p class="msg" role="status"></p>');
+  const menu=content.querySelector('.view-menu'),status=content.querySelector('.msg');
+  for(const [key,label] of Object.entries(renderViews)){
+    const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-pressed',String(key===view));menu.append(b);
+    b.onclick=async()=>{const buttons=[...menu.querySelectorAll('button')];buttons.forEach(v=>v.disabled=true);
+      try{await world.setStyle(key);rememberView(key);panel.close();}
+      catch{status.textContent='화면을 바꾸지 못했어요. 다시 시도해 주세요.';}
+      finally{buttons.forEach(v=>v.disabled=false);}
+    };
+  }
+};
 if(!colors.some(([c])=>c===color))color=colors[0][0];
 $('name').value=saved('name');
 for(const [c,n] of colors){const b=document.createElement('button');b.type='button';b.className='swatch';b.style.setProperty('--c',c);b.title=n;b.setAttribute('aria-label',n);$('colors').append(b);const select=()=>{for(const child of $('colors').children){child.classList.remove('selected');child.setAttribute('aria-pressed','false')}b.classList.add('selected');b.setAttribute('aria-pressed','true');color=c};b.onclick=select;if(c===color)select()}
 async function api(action,fields={}){const res=await fetch('/api/world',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...fields}),signal:AbortSignal.timeout(10000)});const v=await res.json();if(!res.ok){const e=new Error(v.error||'요청을 처리하지 못했어요.');e.status=res.status;throw e}return v}
 function show(html){content.innerHTML=html;if(!panel.open)panel.showModal()}
 $('close').onclick=()=>panel.close();panel.addEventListener('click',e=>{if(e.target===panel){const b=panel.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)panel.close()}});
-function help(){show('<h2>광장 이용 안내</h2><p><b>컴퓨터</b><br>W A S D 또는 방향키로 걷고, 화면을 드래그하거나 Q · E로 시점을 돌려요. Shift를 누르면 빨리 걸어요.</p><p><b>모바일</b><br>왼쪽 조이스틱으로 걷고, 오른쪽 화면을 쓸어 시점을 돌려요.</p><p><b>팀 부지</b><br>벽돌 테두리 가까이 가면 꾸미기 버튼이 나타나요. 팀 편집 코드를 공유하면 팀원들이 같은 부지를 함께 꾸밀 수 있어요.</p><a href="/scene-assets/starlit-courtyard.blend" download>월드 블렌더 원본 받기</a>')}
+function help(){show('<h2>광장 이용 안내</h2><p><b>컴퓨터</b><br>W A S D 또는 방향키로 걷고, 화면을 드래그하거나 Q · E로 시점을 돌려요. Shift를 누르면 빨리 걸어요.</p><p><b>모바일</b><br>왼쪽 조이스틱으로 걷고, 오른쪽 화면을 쓸어 시점을 돌려요.</p><p><b>팀 부지</b><br>벽돌 테두리 가까이 가면 꾸미기 버튼이 나타나요. 팀 편집 코드를 공유하면 팀원들이 같은 부지를 함께 꾸밀 수 있어요.</p><a href="/scene-assets/starlit-courtyard.blend" download>월드 블렌더 원본 받기</a><p><b>ThreeRT 네이티브 장면</b><br>하드웨어 레이트레이싱으로 광장을 둘러볼 수 있어요. 팀 부지 편집은 웹 광장에서 진행해요.</p><div class="native-links"><a href="threerts://osc-starlit-courtyard.bentivoglio0806.chatgpt.site/scene-assets/threert/" target="_blank" rel="noopener">ThreeRT 앱에서 열기</a><a href="/scene-assets/starlit-threert.zip" download>장면 파일 받기</a></div>')}
 $('instructions').onclick=$('help').onclick=help;
 function frame(p){nearest=plots.map(v=>({...v,d:Math.hypot(p.x-v.x,p.z-v.z)})).sort((a,b)=>a.d-b.d)[0];$('location').textContent=nearest.d<6?nearest.id+' 부지':Math.abs(p.x)>12?(p.x<0?'A 산책로':'B 산책로'):'별빛광장';$('editNearby').hidden=nearest.d>6.2;$('editNearby').textContent=nearest.id+' 부지 꾸미기'}
 async function sync(){let wait=900;try{const {x,z,yaw}=world.player;state=await api('sync',{x,z,yaw});world.apply(state);online=true;$('presence').textContent='접속 '+state.players.length+'명';$('notice').textContent=''}catch(e){online=false;$('presence').textContent='재연결 중';$('notice').textContent='연결을 복구하고 있어요. 팀 편집은 연결 후 사용할 수 있어요.';wait=2200;if(e.status===401)try{const v=await api('join',settings);world.player.id=v.id}catch{}}finally{timer=setTimeout(sync,wait)}}
 $('join').onsubmit=async e=>{e.preventDefault();const name=$('name').value.trim();if(!name)return;$('enter').disabled=true;$('joinStatus').textContent='겨울 광장을 준비하고 있어요…';
-  try{if(!world){const {startWorld}=await import('./play.js');world=await startWorld(frame)}settings={name,color};const p=await api('join',{...settings,arrival:true});save('name',name);save('color',color);
+  try{if(!world){const {startWorld}=await import('./play.js');world=await startWorld(frame,view)}settings={name,color};const p=await api('join',{...settings,arrival:true});save('name',name);save('color',color);
     world.start({...p,name,color});$('welcome').hidden=true;$('hud').hidden=false;await sync();
   }catch(error){$('joinStatus').textContent=/webgl/i.test(error.message)?'이 브라우저에서 3D 그래픽을 시작할 수 없어요. Safari 또는 Chrome에서 열어 주세요.':'입장하지 못했어요. '+(error.message||'연결을 확인해 주세요.');$('enter').disabled=false}};
 function map(){const p=world.player;const dots=plots.map(v=>'<g><rect x="'+(v.x-2.7)+'" y="'+(v.z-2.7)+'" width="5.4" height="5.4" rx=".8" fill="'+(v.id[0]==='A'?'#a76657':'#64769f')+'"/><text x="'+v.x+'" y="'+(v.z+1)+'" text-anchor="middle" fill="#fff9e8" font-size="2.6">'+v.id+'</text></g>').join('');

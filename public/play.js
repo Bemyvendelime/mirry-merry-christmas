@@ -1,14 +1,31 @@
 import * as T from 'three';
+import {createReflectedPaving} from './reflected-paving.js';
 import {buildScenery} from './world-scene.js';
 import {createAvatars} from './avatars.js';
 import {plots} from './layout.js';
-export async function startWorld(onFrame){
+export async function startWorld(onFrame, initialView='raytracing'){
   const root=document.querySelector('#game');
   let renderer,software=false;
   try {renderer=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'})}
   catch {const {createCanvasView}=await import('./canvas-view.js');renderer=createCanvasView(root);software=true}
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.65));root.replaceChildren(renderer.domElement);
   const scene=new T.Scene(),cam=new T.PerspectiveCamera(64,1,.12,360),scenery=software?{update(){}}:buildScenery(scene),avatars=software?{render:players=>renderer.setActors(players)}:createAvatars(scene);
+  let style, latestChange=0, pixelModule, pixelRenderer, reflectedPaving;
+  async function setStyle(value){
+    const change=++latestChange;
+    if(software)renderer.setStyle(value);
+    else if(value==='gaussian-pixelart'){
+      pixelModule ||= import('./pixel-splats.js').catch(error=>{pixelModule=null;throw error});
+      const {createPixelSplats}=await pixelModule;
+      if(change!==latestChange)return;
+      pixelRenderer ||= createPixelSplats(renderer,scene);
+    }else if(value==='raytracing'){
+      reflectedPaving ||= createReflectedPaving(renderer,scenery.ground);
+    }
+    style=value;
+    root.dataset.renderView=value;
+    root.dataset.graphics=software?'canvas':'webgl2';
+  }
   let heading=0,pitch=.24,deltaStick={x:0,y:0},t0=performance.now(),elapsed=0,last=0,ready=false;
   const player={id:'',x:0,z:31,yaw:0,color:'#ac4f4c'},remotes=new Map(),keys=new Set(),placed=new Map();
   const templates={}, mat=c=>new T.MeshStandardMaterial({color:c,roughness:.85});
@@ -25,7 +42,7 @@ export async function startWorld(onFrame){
   for(const x of [-.082,.082])piece(new T.SphereGeometry(.028,6,5),mat(0x302d36),x,1.35,-.215,templates.snowman);
   const bench=await fetch('/scene-assets/bench.json').then(r=>{if(!r.ok)throw Error('벤치 파일을 열 수 없어요.');return r.json()});
   for(const p of bench.parts){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p.positions,3));g.computeVertexNormals();piece(g,mat(p.color),0,0,0,templates.bench)}
-  const res=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};addEventListener('resize',res);res();
+  const res=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};addEventListener('resize',res);res();await setStyle(initialView);
   const canMove=()=>ready&&!document.querySelector('dialog').open;
   addEventListener('keydown',e=>{if(canMove()&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','KeyE','ShiftLeft','ShiftRight'].includes(e.code)){keys.add(e.code);e.preventDefault()}});
   addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
@@ -68,9 +85,12 @@ export async function startWorld(onFrame){
     desired.set(player.x+Math.sin(heading)*orbitDistance,2.0+Math.max(.28,-Math.sin(pitch)*3.3),player.z+Math.cos(heading)*orbitDistance);
     cam.position.lerp(desired,first?1:1-Math.exp(-dt*12));
     look.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch)).add(cam.position);
-    cam.lookAt(look);first=false;scenery.update(elapsed);renderer.render(scene,cam);
+    cam.lookAt(look);first=false;scenery.update(elapsed);
+    if(!software&&style==='gaussian-pixelart')pixelRenderer.render(cam);
+    else if(!software&&style==='raytracing')reflectedPaving(scene,cam);
+    else renderer.render(scene,cam);
     if(t-last>200){last=t;onFrame(player)}}
-  return {player,start(p){Object.assign(player,p);
+  return {player,setStyle,start(p){Object.assign(player,p);
     const r=Math.hypot(player.x,player.z);
     if(r<6.45){player.x=r>.01?player.x*6.5/r:0;player.z=r>.01?player.z*6.5/r:6.5}
     ready=true;renderer.setAnimationLoop(render)},apply(state){const live=new Set();

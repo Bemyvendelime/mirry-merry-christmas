@@ -1,0 +1,20 @@
+{
+  "format": "threert/1",
+  "id": "osc-starlit-courtyard",
+  "name": "별빛광장",
+  "version": "1.0.0",
+  "hash": "d74953fe9b5aab9b",
+  "entry": "game.js",
+  "assets": {
+    "assets/courtyard.glb": {
+      "size": 10666480,
+      "sha256": "44a28d5a05e213421e6a72add301113ab845165dc5ef1588cc50685dd3720cac"
+    },
+    "assets/winter-sky.hdr": {
+      "size": 1662696,
+      "sha256": "155cff50a7ca2d226b93bf4f5557c4417ddffb56479b17242f2ce69ca59823c6"
+    }
+  },
+  "web": "index.html",
+  "minClient": "0.5.3"
+}

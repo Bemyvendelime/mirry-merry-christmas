@@ -1,0 +1,3 @@
+Source: https://github.com/cobanov/pixelart-gaussiansplat
+Commit: 67662968b0837b2180b22989be70980fc3b97321
+MIT. src/render/post.js includes a local dispose() method. noise.js contains mulberry32 and hexToRgb from src/noise.js. No upstream art or models are included.
