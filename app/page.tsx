@@ -1,1 +1,1 @@
-export default function Page(){return <iframe src="/world.html" title="별빛광장 3D 월드" allow="fullscreen" style={{position:"fixed",inset:0,width:"100%",height:"100%",border:0,background:"#172541"}}/>}
+export default function Page(){return <iframe src="/world.html" title="Mirry Merry Christmas 3D 월드" allow="fullscreen" style={{position:"fixed",inset:0,width:"100%",height:"100%",border:0,background:"#172541"}}/>}

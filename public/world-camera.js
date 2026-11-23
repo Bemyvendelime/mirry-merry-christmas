@@ -4,6 +4,13 @@ const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 export const wrapAngle=angle=>Math.atan2(Math.sin(angle),Math.cos(angle));
 export const modes=['rear','first','front'];
 
+const maxMovementAngle=Math.PI/18;
+export function movementCameraOffset(previous,side,mode,dt){
+  if(mode==='first')return 0;
+  const target=-clamp(side,-1,1)*maxMovementAngle;
+  return previous+(target-previous)*(-Math.expm1(-9*dt));
+}
+
 export function avatarEyeHeight(token){
   const subject=decodeSubject(token);
   if(!subject)return 1.59;
@@ -30,16 +37,16 @@ export function placeCamera(camera,target,player,mode,azimuth,tilt,eye,dt,snap){
   const distance=mode==='front'?3.85:4.75;
   const horizontal=fp?0:cameraArm(player.x,player.z,sin,cos,distance*horizon);
   const focus=Math.max(.35,eye*.78);
-  const k=fp||snap?1:1-Math.exp(-dt*16);
-  const x=player.x+sin*horizontal,z=player.z+cos*horizontal;
-  const y=fp?eye:Math.max(.25,focus+slope*horizontal/horizon);
-  camera.position.x+=(x-camera.position.x)*k;
-  camera.position.y+=(y-camera.position.y)*k;
-  camera.position.z+=(z-camera.position.z)*k;
-  // Aim from the smoothed position at the avatar, including during sharp turns.
-  // Extra upward tilt lets players see the tree crown even at the ground limit.
+  // Smooth the length of the arm, keeping the bearing independent of travel.
+  // Shorten immediately near the tree and ease back out into open space.
+  const prior=camera.userData.armLength??horizontal;
+  const k=1-Math.exp(-dt*16);
+  const arm=snap||horizontal<=prior?horizontal:prior+(horizontal-prior)*k;
+  camera.userData.armLength=arm;
+  const y=fp?eye:Math.max(.25,focus+slope*arm/horizon);
+  camera.position.set(player.x+sin*arm,y,player.z+cos*arm);
   if(!fp && y>.251){
-    const framing=mode==='rear'?.19*horizontal:0;
+    const framing=mode==='rear'?.19*arm:0;
     target.set(player.x,focus+framing,player.z);
   }else{
     target.set(camera.position.x-sin*horizon,camera.position.y-slope,camera.position.z-cos*horizon);

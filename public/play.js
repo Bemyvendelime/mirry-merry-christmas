@@ -3,7 +3,7 @@ import {createPixelSplats} from './pixel-splats.js';
 import {buildScenery} from './world-scene.js';
 import {createAvatars} from './avatars.js';
 import {plots} from './layout.js';
-import {avatarEyeHeight,modes,placeCamera,wrapAngle} from './world-camera.js';
+import {avatarEyeHeight,modes,movementCameraOffset,placeCamera,wrapAngle} from './world-camera.js';
 export async function startWorld(onFrame){
   const root=document.querySelector('#game');
   let renderer,software=false;
@@ -16,7 +16,7 @@ export async function startWorld(onFrame){
   root.dataset.renderView='gaussian-pixelart';
   root.dataset.graphics=software?'canvas':'webgl2';
   const cameraChoice=document.querySelector('#cameraMode');
-  let mode='rear',heading=0,azimuth=0,tilt=.085,eye=1.59,snap=true;
+  let mode='rear',heading=0,movementOffset=0,tilt=.085,eye=1.59,snap=true;
   let deltaStick={x:0,y:0},t0=performance.now(),elapsed=0,last=0,ready=false;
   const player={id:'',x:0,z:31,yaw:0,color:'#ac4f4c'},remotes=new Map(),keys=new Set(),placed=new Map();
   const templates={}, mat=c=>new T.MeshStandardMaterial({color:c,roughness:.85});
@@ -34,28 +34,46 @@ export async function startWorld(onFrame){
   const bench=await fetch('/scene-assets/bench.json').then(r=>{if(!r.ok)throw Error('벤치 파일을 열 수 없어요.');return r.json()});
   for(const p of bench.parts){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p.positions,3));g.computeVertexNormals();piece(g,mat(p.color),0,0,0,templates.bench)}
   const res=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};addEventListener('resize',res);res();
-  const canMove=()=>ready&&!document.querySelector('dialog').open;
+  const panel=document.querySelector('dialog'),canvas=renderer.domElement;
+  const canMove=()=>ready&&!panel.open;
+  canvas.tabIndex=0;
+  canvas.setAttribute('aria-label','광장 조작. Tab은 시점 전환, Esc는 메뉴.');
+  const focusGame=()=>canvas.focus({preventScroll:true});
+  panel.addEventListener('close',focusGame);
   function selectCamera(value){
     mode=modes.includes(value)?value:'rear';
-    azimuth=player.yaw||0;
-    if(mode==='first')heading=azimuth;
+    heading=player.yaw||0;movementOffset=0;
     tilt=mode==='first'?0:.085;
     cameraChoice.value=mode;root.dataset.cameraMode=mode;snap=true;
   }
-  function swivel(angle){
-    heading=wrapAngle(heading+angle);azimuth=wrapAngle(azimuth+angle);
-  }
-  cameraChoice.onchange=()=>{selectCamera(cameraChoice.value);cameraChoice.blur()};
+  cameraChoice.onchange=()=>{selectCamera(cameraChoice.value);focusGame()};
   addEventListener('keydown',e=>{
-    if(!canMove()||e.ctrlKey||e.altKey||e.metaKey)return;
-    if(e.code==='KeyV'){if(!e.repeat)selectCamera(modes[(modes.indexOf(mode)+1)%modes.length]);e.preventDefault();return;}
-    if(e.target===cameraChoice)return;
-    if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','KeyE','ShiftLeft','ShiftRight'].includes(e.code)){keys.add(e.code);e.preventDefault()}});
+    if(!canMove()||e.ctrlKey||e.altKey||e.metaKey||e.isComposing)return;
+    const inWorld=e.target===canvas||e.target===document.body||e.target===root;
+    if(e.key==='Tab'&&inWorld&&!e.shiftKey){
+      e.preventDefault();
+      if(!e.repeat)selectCamera(modes[(modes.indexOf(mode)+1)%modes.length]);
+      return;
+    }
+    if(e.key==='Escape'&&inWorld){keys.clear();cameraChoice.focus();return;}
+    if(e.target.closest?.('select,input,textarea,[contenteditable="true"]'))return;
+    if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code)){
+      keys.add(e.code);e.preventDefault();
+    }
+  });
   addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
-  const canvas=renderer.domElement;let drag=null;
-  canvas.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId)};
-  canvas.onpointermove=e=>{if(!drag||!canMove())return;swivel(-(e.clientX-drag.x)*.006);tilt=T.MathUtils.clamp(tilt-(e.clientY-drag.y)*.004,-1.49,1.43);drag={x:e.clientX,y:e.clientY}};
-  canvas.onpointerup=canvas.onpointercancel=()=>drag=null;
+  let drag=null;
+  canvas.onpointerdown=e=>{
+    if(!canMove()||drag||e.button!==0)return;
+    focusGame();drag={x:e.clientX,y:e.clientY,id:e.pointerId};canvas.setPointerCapture(e.pointerId);
+  };
+  canvas.onpointermove=e=>{
+    if(!drag||e.pointerId!==drag.id||!canMove())return;
+    heading=wrapAngle(heading-(e.clientX-drag.x)*.006);
+    tilt=T.MathUtils.clamp(tilt-(e.clientY-drag.y)*.004,-1.49,1.43);
+    drag.x=e.clientX;drag.y=e.clientY;
+  };
+  canvas.onpointerup=canvas.onpointercancel=canvas.onlostpointercapture=e=>{if(drag?.id===e.pointerId)drag=null};
   const stick=document.querySelector('#stick');
   function stickMove(e){const b=stick.getBoundingClientRect();let x=(e.clientX-b.left-b.width/2)/38,y=(e.clientY-b.top-b.height/2)/38;const len=Math.max(1,Math.hypot(x,y));x/=len;y/=len;deltaStick={x,y};stick.firstElementChild.style.transform='translate('+x*30+'px,'+y*30+'px)'}
   stick.onpointerdown=e=>{stick.setPointerCapture(e.pointerId);stickMove(e)};stick.onpointermove=e=>{if(stick.hasPointerCapture(e.pointerId))stickMove(e)};stick.onpointerup=stick.onpointercancel=()=>{deltaStick={x:0,y:0};stick.firstElementChild.style.transform=''};
@@ -78,7 +96,7 @@ export async function startWorld(onFrame){
   }
   const look=new T.Vector3();
   function render(t){const dt=Math.min((t-t0)/1000,.06);t0=t;elapsed+=dt;let dx=0,dz=0;
-    if(canMove()){swivel(((keys.has('KeyQ')?1:0)-(keys.has('KeyE')?1:0))*dt*1.65);
+    if(canMove()){
       dx=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+deltaStick.x;
       dz=Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+deltaStick.y;}
     player.moving=Math.hypot(dx,dz)>.07;
@@ -87,15 +105,14 @@ export async function startWorld(onFrame){
       const radius=Math.hypot(x,z);
       if(radius>=6.45){player.x=x;player.z=z}
       else if(radius>.001){player.x=6.45*x/radius;player.z=6.45*z/radius}
-      if(mode!=='first'){
-        player.yaw=Math.atan2(-vx,-vz);
-        azimuth=wrapAngle(azimuth+wrapAngle(player.yaw-azimuth)*(1-Math.exp(-dt*7)));
-      }
+      if(mode!=='first')player.yaw=Math.atan2(-vx,-vz);
     }
-    if(mode==='first'){player.yaw=heading;azimuth=heading;}
+    if(mode==='first')player.yaw=heading;
+    const side=player.moving?dx/Math.max(1,Math.hypot(dx,dz)):0;
+    movementOffset=movementCameraOffset(movementOffset,side,mode,dt);
     const visible=[player];for(const r of remotes.values()){const k=Math.min(1,dt*3.6);r.moving=Math.hypot(r.tx-r.x,r.tz-r.z)>.055;r.x+=(r.tx-r.x)*k;r.z+=(r.tz-r.z)*k;r.yaw+=Math.atan2(Math.sin(r.tyaw-r.yaw),Math.cos(r.tyaw-r.yaw))*k;visible.push(r)}
     avatars.render(visible,dt,mode==='first');updateLabels(visible);
-    placeCamera(cam,look,player,mode,azimuth,tilt,eye,dt,snap);
+    placeCamera(cam,look,player,mode,heading+movementOffset,tilt,eye,dt,snap);
     snap=false;scenery.update(elapsed);
     if(!software)pixelRenderer.render(cam);
     else renderer.render(scene,cam);
@@ -104,7 +121,7 @@ export async function startWorld(onFrame){
     const r=Math.hypot(player.x,player.z);
     if(r<6.45){player.x=r>.01?player.x*6.5/r:0;player.z=r>.01?player.z*6.5/r:6.5}
     heading=player.yaw||0;eye=avatarEyeHeight(player.photo);selectCamera(mode);
-    ready=true;renderer.setAnimationLoop(render)},apply(state){const live=new Set();
+    ready=true;focusGame();renderer.setAnimationLoop(render)},apply(state){const live=new Set();
     for(const p of state.players){if(p.id===player.id)continue;live.add(p.id);const r=remotes.get(p.id)||{...p};Object.assign(r,{tx:p.x,tz:p.z,tyaw:p.yaw,color:p.color,photo:p.photo||'',name:p.name});remotes.set(p.id,r)}for(const id of remotes.keys())if(!live.has(id))remotes.delete(id);
     if(software){renderer.setObjects(state.objects);return}
     for(const o of state.objects){const key=o.plot+'-'+o.slot,old=placed.get(key);if(old?.version===o.version)continue;if(old?.mesh)scene.remove(old.mesh);let mesh=null;
