@@ -30,6 +30,28 @@ yarn-error.log*
 .env*
 .dev.vars*
 *.pem
+.npmrc
+.git-credentials
+.netrc
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials*.json
+service-account*.json
+**/secrets/
+
+# Participant uploads and local database copies
+**/uploads/
+**/private-uploads/
+**/backups/
+*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.dump
 
 # Checkout-local tool state
 /.wrangler/
