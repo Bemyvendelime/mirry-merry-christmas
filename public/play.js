@@ -2,24 +2,39 @@ import * as T from 'three';
 import {createPixelSplats} from './pixel-splats.js';
 import {buildScenery} from './world-scene.js';
 import {createAvatars} from './avatars.js';
-import {plots} from './layout.js';
+import {plots,surfaceAt} from './layout.js';
+import {plazaRoom,shopRoom,insideHouseWall,atDoor} from './room-space.js';
+import {cottageExterior,cottageInterior,cottageObstacles,addCottageGeometry} from './winter-cottage.js';
 import {avatarEyeHeight,modes,movementCameraOffset,placeCamera,wrapAngle} from './world-camera.js';
 import {takeOff,animateJump,applyRemoteJump} from './jump.js';
-export async function startWorld(onFrame,onJump){
+export async function startWorld(onFrame,onJump,footsteps){
   const root=document.querySelector('#game');
   let renderer,software=false;
   try {renderer=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'})}
   catch {const {createCanvasView}=await import('./canvas-view.js');renderer=createCanvasView(root);software=true}
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.65));root.replaceChildren(renderer.domElement);
-  const scene=new T.Scene(),cam=new T.PerspectiveCamera(64,1,.12,360),scenery=software?{update(){}}:buildScenery(scene),avatars=software?{render:(players,dt,hideSelf)=>renderer.setActors(players,hideSelf)}:createAvatars(scene);
+  const scene=new T.Scene(),interior=new T.Scene(),actorRoot=new T.Group();
+  const cam=new T.PerspectiveCamera(64,1,.12,360);
+  const scenery=software?null:buildScenery(scene);
+  const avatars=software?{render:(players,dt,hideSelf)=>renderer.setActors(players,hideSelf)}:createAvatars(actorRoot);
   const pixelRenderer=software?null:createPixelSplats(renderer,scene);
+  let indoorPixels;
   if(software)renderer.setStyle('gaussian-pixelart');
+  else{
+    addCottageGeometry(scene,cottageExterior);
+    scene.add(actorRoot);
+    interior.background=new T.Color(0x463741);
+    interior.add(new T.HemisphereLight(0xffead1,0xbb8a76,1.72));
+    const daylight=new T.DirectionalLight(0xffddb2,1.5);
+    daylight.position.set(-3,5,4);interior.add(daylight);
+  }
   root.dataset.renderView='gaussian-pixelart';
   root.dataset.graphics=software?'canvas':'webgl2';
   const cameraChoice=document.querySelector('#cameraMode');
   let mode='rear',heading=0,movementOffset=0,tilt=.085,eye=1.59,snap=true;
   let deltaStick={x:0,y:0},t0=performance.now(),elapsed=0,last=0,ready=false;
-  const player={id:'',x:0,z:31,yaw:0,color:'#ac4f4c'},remotes=new Map(),keys=new Set(),placed=new Map();
+  let transitioning=false;
+  const player={room:plazaRoom,visit:0,id:'',x:0,z:31,yaw:0,color:'#ac4f4c'},remotes=new Map(),keys=new Set(),placed=new Map();
   const templates={}, mat=c=>new T.MeshStandardMaterial({color:c,roughness:.85});
   function piece(g,m,x,y,z,group){const a=new T.Mesh(g,m);a.position.set(x,y,z);group.add(a);return a}
   for(const kind of ['pine','light','snowman','bench'])templates[kind]=new T.Group();
@@ -36,7 +51,7 @@ export async function startWorld(onFrame,onJump){
   for(const p of bench.parts){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p.positions,3));g.computeVertexNormals();piece(g,mat(p.color),0,0,0,templates.bench)}
   const res=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};addEventListener('resize',res);res();
   const panel=document.querySelector('dialog'),canvas=renderer.domElement;
-  const canMove=()=>ready&&!panel.open;
+  const canMove=()=>ready&&!transitioning&&!panel.open&&!document.activeElement?.closest('#roomChat input');
   canvas.tabIndex=0;
   canvas.setAttribute('aria-label','광장 조작. 스페이스는 점프, Tab은 시점 전환, Esc는 메뉴.');
   const focusGame=()=>canvas.focus({preventScroll:true});
@@ -55,6 +70,13 @@ export async function startWorld(onFrame,onJump){
   addEventListener('keydown',e=>{
     if(!canMove()||e.ctrlKey||e.altKey||e.metaKey||e.isComposing)return;
     const inWorld=e.target===canvas||e.target===document.body||e.target===root;
+    if(inWorld&&!e.repeat)footsteps.unlock();
+    if(e.code==='KeyE'&&inWorld&&atDoor(player.room,player.x,player.z)){
+      e.preventDefault();if(!e.repeat)document.querySelector('#doorAction').click();return;
+    }
+    if(e.key==='Enter'&&inWorld&&player.room===shopRoom){
+      e.preventDefault();document.querySelector('#chatOpen').click();return;
+    }
     if(e.code==='Space'&&inWorld){
       e.preventDefault();
       if(!e.repeat)jump();
@@ -74,8 +96,9 @@ export async function startWorld(onFrame,onJump){
   addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
   let drag=null;
   canvas.onpointerdown=e=>{
+    if(ready&&!transitioning&&!panel.open&&e.button===0)focusGame();
     if(!canMove()||drag||e.button!==0)return;
-    focusGame();drag={x:e.clientX,y:e.clientY,id:e.pointerId};canvas.setPointerCapture(e.pointerId);
+    footsteps.unlock();focusGame();drag={x:e.clientX,y:e.clientY,id:e.pointerId};canvas.setPointerCapture(e.pointerId);
   };
   canvas.onpointermove=e=>{
     if(!drag||e.pointerId!==drag.id||!canMove())return;
@@ -86,7 +109,7 @@ export async function startWorld(onFrame,onJump){
   canvas.onpointerup=canvas.onpointercancel=canvas.onlostpointercapture=e=>{if(drag?.id===e.pointerId)drag=null};
   const stick=document.querySelector('#stick');
   function stickMove(e){const b=stick.getBoundingClientRect();let x=(e.clientX-b.left-b.width/2)/38,y=(e.clientY-b.top-b.height/2)/38;const len=Math.max(1,Math.hypot(x,y));x/=len;y/=len;deltaStick={x,y};stick.firstElementChild.style.transform='translate('+x*30+'px,'+y*30+'px)'}
-  stick.onpointerdown=e=>{stick.setPointerCapture(e.pointerId);stickMove(e)};stick.onpointermove=e=>{if(stick.hasPointerCapture(e.pointerId))stickMove(e)};stick.onpointerup=stick.onpointercancel=()=>{deltaStick={x:0,y:0};stick.firstElementChild.style.transform=''};
+  stick.onpointerdown=e=>{footsteps.unlock();stick.setPointerCapture(e.pointerId);stickMove(e)};stick.onpointermove=e=>{if(stick.hasPointerCapture(e.pointerId))stickMove(e)};stick.onpointerup=stick.onpointercancel=()=>{deltaStick={x:0,y:0};stick.firstElementChild.style.transform=''};
   const labels=new Map();
   function updateLabels(players){
     if(software)return;
@@ -94,45 +117,70 @@ export async function startWorld(onFrame,onJump){
     for(const p of players){
       if(p.id===player.id||Math.hypot(p.x-player.x,p.z-player.z)>15||nearby.size>=18)continue;
       nearby.add(p.id);let label=labels.get(p.id);
-      if(label&&label.userData.name!==p.name){scene.remove(label);label.material.map.dispose();label.material.dispose();label=null;}
+      if(label&&label.userData.name!==p.name){actorRoot.remove(label);label.material.map.dispose();label.material.dispose();label=null;}
       if(!label){const canvas=document.createElement('canvas');canvas.width=320;canvas.height=72;
         const ctx=canvas.getContext('2d');ctx.font='bold 29px sans-serif';ctx.textAlign='center';
         const width=Math.min(318,ctx.measureText(p.name).width+32);
         ctx.fillStyle='#17263ed9';ctx.fillRect((320-width)/2,7,width,53);ctx.fillStyle='#fff4db';ctx.fillText(p.name,160,44,295);
         const tex=new T.CanvasTexture(canvas);tex.colorSpace=T.SRGBColorSpace;
-        label=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));label.userData.name=p.name;label.scale.set(2.45,.55,1);scene.add(label);labels.set(p.id,label)}
+        label=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));label.userData.name=p.name;label.scale.set(2.45,.55,1);actorRoot.add(label);labels.set(p.id,label)}
       label.position.set(p.x,2.15+(p.y||0),p.z)}
-    for(const [id,label] of labels)if(!nearby.has(id)){scene.remove(label);label.material.map.dispose();label.material.dispose();labels.delete(id)}
+    for(const [id,label] of labels)if(!nearby.has(id)){actorRoot.remove(label);label.material.map.dispose();label.material.dispose();labels.delete(id)}
   }
   const look=new T.Vector3();
   function render(t){const dt=Math.min((t-t0)/1000,.06);t0=t;elapsed+=dt;let dx=0,dz=0;
+    const oldX=player.x,oldZ=player.z;
     if(canMove()){
       dx=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+deltaStick.x;
       dz=Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+deltaStick.y;}
     player.moving=Math.hypot(dx,dz)>.07;
     if(player.moving){const div=Math.max(1,Math.hypot(dx,dz)),s=Math.sin(heading),c=Math.cos(heading),vx=(c*dx+s*dz)/div,vz=(-s*dx+c*dz)/div;
-      const step=dt*(keys.has('ShiftLeft')||keys.has('ShiftRight')?7:4.8);const x=T.MathUtils.clamp(player.x+vx*step,-52,52),z=T.MathUtils.clamp(player.z+vz*step,-46,46);
-      const radius=Math.hypot(x,z);
-      if(radius>=6.45){player.x=x;player.z=z}
-      else if(radius>.001){player.x=6.45*x/radius;player.z=6.45*z/radius}
+      const step=dt*(keys.has('ShiftLeft')||keys.has('ShiftRight')?7:4.8);
+      const indoor=player.room===shopRoom;
+      const canStep=(x,z)=>indoor?!cottageObstacles.some(o=>x>o.minX-.18&&x<o.maxX+.18&&z>o.minZ-.18&&z<o.maxZ+.18):!insideHouseWall(x,z);
+      const x=T.MathUtils.clamp(player.x+vx*step,indoor?-5.80:-52,indoor?5.80:52);
+      const z=T.MathUtils.clamp(player.z+vz*step,indoor?-4.68:-46,indoor?4.68:46);
+      if(canStep(x,player.z))player.x=x;
+      if(canStep(player.x,z))player.z=z;
+      const radius=Math.hypot(player.x,player.z);
+      if(!indoor&&radius<6.45&&radius>.001){player.x*=6.45/radius;player.z*=6.45/radius;}
       if(mode!=='first')player.yaw=Math.atan2(-vx,-vz);
     }
     if(mode==='first')player.yaw=heading;
     const side=player.moving?dx/Math.max(1,Math.hypot(dx,dz)):0;
     movementOffset=movementCameraOffset(movementOffset,side,mode,dt);
     animateJump(player,t);
+    footsteps.walk(Math.hypot(player.x-oldX,player.z-oldZ),player.room===plazaRoom&&player.y<.001&&t-player.jumpStart>0,keys.has('ShiftLeft')||keys.has('ShiftRight'),()=>surfaceAt(player.x,player.z));
     const visible=[player];for(const r of remotes.values()){const k=Math.min(1,dt*3.6);r.moving=Math.hypot(r.tx-r.x,r.tz-r.z)>.055;r.x+=(r.tx-r.x)*k;r.z+=(r.tz-r.z)*k;r.yaw+=Math.atan2(Math.sin(r.tyaw-r.yaw),Math.cos(r.tyaw-r.yaw))*k;animateJump(r,t);visible.push(r)}
     avatars.render(visible,dt,mode==='first');updateLabels(visible);
     placeCamera(cam,look,player,mode,heading+movementOffset,tilt,eye,dt,snap);
-    snap=false;scenery.update(elapsed);
-    if(!software)pixelRenderer.render(cam);
+    snap=false;if(player.room===plazaRoom)scenery?.update(elapsed);
+    if(!software)(player.room===shopRoom?indoorPixels:pixelRenderer).render(cam);
     else renderer.render(scene,cam);
     if(t-last>90){last=t;onFrame(player)}}
-  return {player,start(p){Object.assign(player,p);
-    const r=Math.hypot(player.x,player.z);
-    if(r<6.45){player.x=r>.01?player.x*6.5/r:0;player.z=r>.01?player.z*6.5/r:6.5}
-    heading=player.yaw||0;eye=avatarEyeHeight(player.photo);selectCamera(mode);
-    ready=true;focusGame();renderer.setAnimationLoop(render)},apply(state){const live=new Set();
+  function clearInput(){
+    footsteps.reset();keys.clear();drag=null;deltaStick={x:0,y:0};stick.firstElementChild.style.transform='';
+  }
+  function setRoom(position){
+    const room=position.room||plazaRoom;
+    Object.assign(player,position,{room,y:0,airPose:0,moving:false,jumpStart:-Infinity});
+    remotes.clear();clearInput();updateLabels([]);
+    if(software){renderer.setRoom(room);renderer.setActors([]);renderer.setObjects([]);}
+    else{
+      if(room===shopRoom&&!indoorPixels){
+        indoorPixels=createPixelSplats(renderer,interior);
+        addCottageGeometry(interior,cottageInterior);
+      }
+      (room===shopRoom?interior:scene).add(actorRoot);
+    }
+    selectCamera(mode);
+    if(room===shopRoom&&mode!=='first')tilt=.21;
+    focusGame();
+  }
+  document.querySelector('#roomChat').addEventListener('focusin',clearInput);
+  return {player,setRoom,focus:focusGame,freeze(value){transitioning=value;clearInput();},start(p){
+    eye=avatarEyeHeight(p.photo);setRoom(p);
+    ready=true;renderer.setAnimationLoop(render)},apply(state){const live=new Set();
     for(const p of state.players){if(p.id===player.id)continue;live.add(p.id);const r=remotes.get(p.id)||{id:p.id,x:p.x,z:p.z,yaw:p.yaw};applyRemoteJump(r,p,state.serverNow,performance.now());Object.assign(r,{tx:p.x,tz:p.z,tyaw:p.yaw,color:p.color,photo:p.photo||'',name:p.name});remotes.set(p.id,r)}for(const id of remotes.keys())if(!live.has(id))remotes.delete(id);
     if(software){renderer.setObjects(state.objects);return}
     for(const o of state.objects){const key=o.plot+'-'+o.slot,old=placed.get(key);if(old?.version===o.version)continue;if(old?.mesh)scene.remove(old.mesh);let mesh=null;

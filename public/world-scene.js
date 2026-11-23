@@ -1,5 +1,5 @@
 import * as T from 'three';
-import { plots } from './layout.js';
+import { plots, districts, plotSize, districtColors, districtLamps, streetPoint, plotMarker, clearForPlanting, paintDistrictRoads } from './layout.js';
 import { setWinterSky, makeWetPaving, addLanternReflections, addEvergreenNeedles, addFirDistanceModel } from './winter-materials.js';
 
 // Metres, +Y up. All public fixtures are local geometry and remain visible offline.
@@ -21,11 +21,7 @@ export function buildScenery(scene) {
   const mesh=(g,m,x=0,y=0,z=0)=>{const o=new T.Mesh(g,m);o.position.set(x,y,z);scene.add(o);return o;};
   const scale=18,span=128,cn=makeCanvas(span*scale);const ctx=cn.getContext('2d');
   ctx.fillStyle='white';ctx.fillRect(0,0,cn.width,cn.height);ctx.translate(cn.width/2,cn.height/2);ctx.scale(scale,scale);
-  function ellipse(x,z,rx,rz,width,fill=false){ctx.beginPath();ctx.ellipse(x,z,rx,rz,0,0,tau);if(fill)ctx.fill();else {ctx.lineWidth=width;ctx.stroke();}}
-  ctx.fillStyle=ctx.strokeStyle='black';ctx.lineCap='round';ctx.lineJoin='round';
-  ellipse(0,0,12,12,0,true);ctx.fillRect(-3.6,6,7.2,58);
-  for(const sign of [-1,1]){ellipse(sign*25,-8,16,20,5.7);ctx.beginPath();ctx.moveTo(sign*6,4);ctx.quadraticCurveTo(sign*12,8,sign*17,8.6);ctx.lineWidth=6;ctx.stroke();ctx.beginPath();ctx.moveTo(sign*8,-4);ctx.lineTo(sign*11,-11);ctx.stroke();}
-  for(const p of plots){ctx.save();ctx.translate(p.x,p.z);ctx.rotate(-p.angle);ctx.fillRect(-3.6,-3.4,7.2,6.8);ctx.restore();const a=Math.atan2((p.z+8)/20,(p.x-Math.sign(p.x)*25)/16);ctx.beginPath();ctx.moveTo(p.x,p.z);ctx.lineTo(Math.sign(p.x)*25+16*Math.cos(a),-8+20*Math.sin(a));ctx.lineWidth=3.2;ctx.stroke();}
+  paintDistrictRoads(ctx,'black');
   // Powder collects along the joints; a few patches also survive on the walking surface.
   ctx.fillStyle='rgba(205,205,205,.48)';for(let i=0;i<4500;i++){const x=between(-59,59),z=between(-55,55);const r=between(.025,.17);ctx.beginPath();ctx.ellipse(x,z,r*2.3,r,.3,0,tau);ctx.fill();}
   // Sample path edges to lay down irregular wind-blown fingers of snow at
@@ -69,8 +65,8 @@ export function buildScenery(scene) {
   function curb(x,z,rx,rz,h=.26){const n=Math.ceil(tau*Math.max(rx,rz)/.85);for(let i=0;i<n;i++){const a=i/n*tau;const ca=Math.cos(a),sa=Math.sin(a);const tangent=tau/n*Math.hypot(rx*sa,rz*ca);const yaw=-Math.atan2(rz*ca,-rx*sa);add(cube,x+ca*rx,h/2+.02,z+sa*rz,tangent*.97,h,.3,choose(stoneColors),yaw);add(cube,x+ca*rx,h+.028,z+sa*rz,tangent*.98,.045,.32,0xe6e5ee,yaw);}}
   curb(0,0,6.20,6.20,.43);
   add(post,0,.23,0,6.13,.41,6.13,0xd6dce7);
-  // Plot paving leaves an empty, level building footprint for each team.
-  for(const p of plots){const width=6.8,depth=6.1;const c=Math.cos(p.angle),s=Math.sin(p.angle);const box=(lx,lz,w,d,col)=>add(cube,p.x+lx*c+lz*s,.055,p.z-lx*s+lz*c,w,.10,d,col,p.angle);for(const zz of [-1,1])for(let i=0;i<14;i++)box(-width/2+(i+.5)*width/14,zz*depth/2,width/14-.018,.23,choose([0x995e59,0x88594d,0xa36a62]));for(const xx of [-1,1])for(let i=0;i<13;i++)box(xx*width/2,-depth/2+(i+.5)*depth/13,.23,depth/13-.018,choose([0x995e59,0x88594d,0xa36a62]));}
+  // Low boundary stones mark the snowy lots without paving their footprints.
+  for(const p of plots){const {width,depth}=plotSize(p);const c=Math.cos(p.angle),s=Math.sin(p.angle);const box=(lx,lz,w,d,col)=>add(cube,p.x+lx*c+lz*s,.055,p.z-lx*s+lz*c,w,.10,d,col,p.angle);for(const zz of [-1,1])for(let i=0;i<14;i++)box(-width/2+(i+.5)*width/14,zz*depth/2,width/14-.018,.23,choose([0xc4cbd6,0xa7a6a9,0xd9dbe1]));for(const xx of [-1,1])for(let i=0;i<13;i++)box(xx*width/2,-depth/2+(i+.5)*depth/13,.23,depth/13-.018,choose([0xc4cbd6,0xa7a6a9,0xd9dbe1]));}
   const glowPos=[],glowCodes=[],glowSizes=[];function glow(x,y,z,color,size){glowPos.push(x,y,z);glowCodes.push(...new T.Color(color).toArray());glowSizes.push(size);}
   
   const contactShadows=[];
@@ -100,8 +96,19 @@ export function buildScenery(scene) {
     add(cube,x,.421,z,.303,.053,.307,0x9ca0ab);
   }
   function lamp(x,z,zone=null){lampLocations.push([x,z]);contactShadows.push([x,z,.80,.66]);gildedHardware(x,z);add(cube,x,.2,z,.62,.4,.62,0x626276);add(cube,x,2.25,z,.21,4.2,.21,0x624a44);add(cube,x+.34,4.2,z,.93,.17,.19,0x775b4a);limb(V(x+.05,3.72,z),V(x+.55,4.18,z),.064,0x584a45);add(post,x+.63,3.94,z,.032,.42,.032,0x3d3741);add(cube,x+.63,3.58,z,.41,.60,.41,0xffca7e,0,lit);for(const dx of [-.20,.20])for(const dz of [-.20,.20])add(cube,x+.63+dx,3.58,z+dz,.041,.64,.041,0x443c42);add(cube,x+.63,3.28,z,.52,.09,.52,0x45404a);glow(x+.63,3.58,z,0xffbf70,2.5);
-    if(zone){const cv=makeCanvas(96,150),b=cv.getContext('2d');b.fillStyle=zone==='A'?'#94483c':'#47547a';b.beginPath();b.moveTo(0,0);b.lineTo(96,0);b.lineTo(96,150);b.lineTo(48,129);b.lineTo(0,150);b.fill();b.fillStyle='#f3e8d5';b.font='60px Georgia';b.textAlign='center';b.fillText(zone,48,81);const t=new T.CanvasTexture(cv);t.colorSpace=T.SRGBColorSpace;const sign=mesh(new T.PlaneGeometry(.67,1.05),unlit(0xffffff,{map:t,side:T.DoubleSide,transparent:true}),x+.56,2.55,z+.12);sign.rotation.y=x>0?-.18:.18;}}
-  for(const side of [-1,1]){lamp(side*5,13,side<0?'A':'B');lamp(side*4.3,27);lamp(side*4.3,40);for(let i=0;i<8;i++){let a=(i+.25)*tau/8;lamp(side*25+13*Math.cos(a),-8+17*Math.sin(a));}lamp(side*7,-9);}
+    if(zone){const cv=makeCanvas(96,150),b=cv.getContext('2d');b.fillStyle=districtColors[zone];b.beginPath();b.moveTo(0,0);b.lineTo(96,0);b.lineTo(96,150);b.lineTo(48,129);b.lineTo(0,150);b.fill();b.fillStyle='#f3e8d5';b.font='60px Georgia';b.textAlign='center';b.fillText(zone,48,81);const t=new T.CanvasTexture(cv);t.colorSpace=T.SRGBColorSpace;const sign=mesh(new T.PlaneGeometry(.67,1.05),unlit(0xffffff,{map:t,side:T.DoubleSide,transparent:true}),x+.56,2.55,z+.12);sign.rotation.y=x>0?-.18:.18;}}
+  for(const fixture of districtLamps)lamp(fixture.x,fixture.z,fixture.zone);
+  for(const street of districts){
+    const yaw=Math.atan2(street.dx,street.dz);
+    for(const side of [-1,1])for(let d=13.5;d<42;d+=.98){const p=streetPoint(street,d,side*2.97);add(cube,p.x,.033,p.z,.13,.04,.88,street.color,yaw);}
+  }
+  for(const plot of plots){
+    const pos=plotMarker(plot),yaw=plot.angle,face=V(Math.sin(yaw),0,Math.cos(yaw));
+    add(cube,pos.x,.53,pos.z,.10,1.06,.10,0x55494b,yaw);
+    add(cube,pos.x,1.13,pos.z,1.28,.68,.091,0x62504a,yaw);
+    const badge=makeCanvas(240,124),b=badge.getContext('2d');b.fillStyle='#28373c';b.fillRect(0,0,240,124);b.fillStyle=districtColors[plot.zone];b.fillRect(0,0,18,124);b.strokeStyle='#d2ba8d';b.lineWidth=3;b.strokeRect(5,5,230,114);b.fillStyle='#fff2d6';b.textAlign='center';b.textBaseline='middle';b.font='bold 66px Georgia,serif';b.fillText(plot.label,125,63);
+    const t=new T.CanvasTexture(badge);t.colorSpace=T.SRGBColorSpace;const plate=mesh(new T.PlaneGeometry(1.24,.64),unlit(0xffffff,{map:t}),pos.x+face.x*.049,1.13,pos.z+face.z*.049);plate.rotation.y=yaw;
+  }
   const leafPositions=[],leafColors=[];
   function triangle(a,b,c,color,shade=1){leafPositions.push(...a,...b,...c);const v=new T.Color(color).multiplyScalar(shade);for(let i=0;i<3;i++)leafColors.push(v.r,v.g,v.b);}
   function fir(x,z,h,r,decorated){contactShadows.push([x,z,r,r*.82]);add(stem,x,h*.46,z,r*.12,h*.91,r*.12,0x59493e);const levels=decorated?43:12;for(let j=0;j<levels;j++){const f=j/levels;const y=h*((decorated?.070:.16)+(decorated?.90:.81)*f);const maxR=r*Math.pow(1-f,.86);const arms=decorated?Math.ceil(11+maxR*1.45):Math.ceil(8+maxR*2.1);const offset=between(0,tau);for(let k=0;k<arms;k++){const a=offset+k/arms*tau+between(-.065,.065);const radius=maxR*between(.84,1.13);const ca=Math.cos(a),sa=Math.sin(a);const vert=(d,w,yy)=>[x+ca*d-sa*w,yy,z+sa*d+ca*w];const shoulder=between(.1,.2)*radius;const heel=vert(.06*radius,0,y+.28);const top=vert(.49*radius,0,y+.06);const tip=vert(radius,0,y-.06*radius+between(-.14,.03));const left=vert(.55*radius,shoulder,y-.15),right=vert(.55*radius,-shoulder,y-.19);const col=choose([0x284238,0x30493f,0x365244,0x3d584d,0x42584f]);triangle(heel,left,top,col);triangle(heel,top,right,col,.87);triangle(top,left,tip,col);triangle(top,tip,right,col,.79);
@@ -169,13 +176,13 @@ export function buildScenery(scene) {
   const heroCore=mesh(heroGeometry,flat(0xffffff,{vertexColors:true,side:T.DoubleSide}));
   leafPositions.length=0;leafColors.length=0;
   addFirDistanceModel(scene,[heroCore,heroNeedles,wire],36,16.15);
-  for(const side of [-1,1])for(let i=0;i<8;i++){let a=i*tau/8+.19;const x=side*25+between(4.5,8)*Math.cos(a),z=-8+between(7,11)*Math.sin(a);if(i%3===0)fir(x,z,between(3.4,5.1),between(.9,1.55),false);}
-  function bareTree(x,z,h,pale=false){contactShadows.push([x,z,h*.17,h*.11]);const barks=pale?[0xb7aeb5,0xb2a4a5,0xa19aa9]:[0x685954,0x635652,0x78665a];const base=V(x,0,z);const trunkTop=V(x+between(-.24,.24),h*.66,z+between(-.24,.24));limb(base,trunkTop,h*.041,choose(barks));function branch(start,angle,length,rad,depth,upward){const horizontal=length*Math.sqrt(1-upward*upward);const end=start.clone().add(V(Math.cos(angle)*horizontal,length*upward,Math.sin(angle)*horizontal));limb(start,end,rad,choose(barks));if(rad>.10&&depth%2===0){const a=start.clone(),b=end.clone();a.x-=rad*.6;b.x-=rad*.6;limb(a,b,rad*.40,0xc6bfc5);}if(depth>0){branch(end,angle+between(-.56,.5),length*between(.64,.81),rad*.64,depth-1,between(.40,.88));branch(end,angle+choose([-1,1])*between(.58,1.7),length*between(.48,.72),rad*.51,depth-1,between(.23,.78));}else if(rnd()<.16){add(rock,end.x,end.y,end.z,.09,.035,.063,choose([0x875c44,0xa16c4c]));}}
+  for(const side of [-1,1])for(let i=0;i<8;i++){let a=i*tau/8+.19;const x=side*25+between(4.5,8)*Math.cos(a),z=-8+between(7,11)*Math.sin(a);if(i%3===0&&clearForPlanting(x,z,1.2))fir(x,z,between(3.4,5.1),between(.9,1.55),false);}
+  function bareTree(x,z,h,pale=false){if(!clearForPlanting(x,z,1.7))return;contactShadows.push([x,z,h*.17,h*.11]);const barks=pale?[0xb7aeb5,0xb2a4a5,0xa19aa9]:[0x685954,0x635652,0x78665a];const base=V(x,0,z);const trunkTop=V(x+between(-.24,.24),h*.66,z+between(-.24,.24));limb(base,trunkTop,h*.041,choose(barks));function branch(start,angle,length,rad,depth,upward){const horizontal=length*Math.sqrt(1-upward*upward);const end=start.clone().add(V(Math.cos(angle)*horizontal,length*upward,Math.sin(angle)*horizontal));limb(start,end,rad,choose(barks));if(rad>.10&&depth%2===0){const a=start.clone(),b=end.clone();a.x-=rad*.6;b.x-=rad*.6;limb(a,b,rad*.40,0xc6bfc5);}if(depth>0){branch(end,angle+between(-.56,.5),length*between(.64,.81),rad*.64,depth-1,between(.40,.88));branch(end,angle+choose([-1,1])*between(.58,1.7),length*between(.48,.72),rad*.51,depth-1,between(.23,.78));}else if(rnd()<.16){add(rock,end.x,end.y,end.z,.09,.035,.063,choose([0x875c44,0xa16c4c]));}}
     for(let k=0;k<7;k++){const frac=.48+.48*k/7;const pos=base.clone().lerp(trunkTop,frac);branch(pos,k*2.4+between(-.4,.4),h*between(.17,.25),h*.021,3,between(.38,.78));}branch(trunkTop,rnd()*tau,h*.17,h*.019,3,.92);}
   for(const side of [-1,1]){for(let i=0;i<8;i++){const a=i*tau/8+.1;bareTree(side*25+7.4*Math.cos(a),-8+12*Math.sin(a),between(5.6,8.2),i%4===0);}for(let i=0;i<7;i++){bareTree(side*between(47,54),-39+i*13,between(8,12),i%3===0);}for(let i=0;i<3;i++)bareTree(side*(10+i*3),20+i*9,between(7,12),i%2===0);}
   for(let i=0;i<13;i++)bareTree(-54+i*8.8,between(-49,-43),between(7,11),i%3===0);
   // Snow-covered planting beds and rounded stones supply close-up detail under the branches.
-  for(const side of [-1,1]){for(let i=0;i<155;i++){const a=rnd()*tau,d=Math.sqrt(rnd());const x=side*25+9.7*d*Math.cos(a),z=-8+13*d*Math.sin(a),sz=between(.14,.7);add(rock,x,sz*.17,z,sz,sz*.56,sz*.77,choose([0x708188,0x89929f,0xa5a6b7]),a);add(rock,x-.025,sz*.30,z,sz*.93,sz*.50,sz*.70,0xdeE3ee,a);}}for(let i=0;i<138;i++){const a=rnd()*tau,d=Math.sqrt(rnd())*6.05;add(rock,d*Math.cos(a),.45,d*Math.sin(a),between(.26,.64),.22,between(.20,.44),0xd3deeb,a);}
+  for(const side of [-1,1]){for(let i=0;i<155;i++){const a=rnd()*tau,d=Math.sqrt(rnd());const x=side*25+9.7*d*Math.cos(a),z=-8+13*d*Math.sin(a),sz=between(.14,.7);if(!clearForPlanting(x,z,sz))continue;add(rock,x,sz*.17,z,sz,sz*.56,sz*.77,choose([0x708188,0x89929f,0xa5a6b7]),a);add(rock,x-.025,sz*.30,z,sz*.93,sz*.50,sz*.70,0xdeE3ee,a);}}for(let i=0;i<138;i++){const a=rnd()*tau,d=Math.sqrt(rnd())*6.05;add(rock,d*Math.cos(a),.45,d*Math.sin(a),between(.26,.64),.22,between(.20,.44),0xd3deeb,a);}
   // Winter seed heads and thin, ice-tipped red-twig dogwood animate the
   // silhouettes of the planted islands without obstructing the perimeter plots.
   const grasses=[], grassColors=[];
@@ -187,6 +194,7 @@ export function buildScenery(scene) {
     for(let cluster=0;cluster<30;cluster++){
       const a=rnd()*tau,dist=between(.22,.91);
       const cx=side*25+9.6*Math.cos(a)*dist,cz=-8+13.2*Math.sin(a)*dist;
+      if(!clearForPlanting(cx,cz,.8))continue;
       for(let i=0;i<between(11,24);i++){
         const angle=rnd()*tau,reach=between(.17,.69),height=between(.18,.85);
         const bx=cx+between(-.15,.15),bz=cz+between(-.15,.15);

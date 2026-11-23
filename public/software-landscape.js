@@ -1,7 +1,7 @@
 // Software ray sampler for the shared world. The floor, including its high-frequency
 // texture, lives in metres; walking and looking around never slide a screen overlay.
 import {reflectedSprites} from './software-reflections.js';
-import {plots} from './layout.js';
+import {plots, plotSize, districts, streetPoint, paintDistrictRoads} from './layout.js';
 const TAU=Math.PI*2, SPAN=144, SIZE=1024, PIXELS=SIZE/SPAN;
 const make=(w,h=w)=>Object.assign(document.createElement('canvas'),{width:w,height:h});
 function loadTexture(name,ready){const img=new Image();img.onload=()=>ready(img);img.src=new URL('./scene-assets/'+name,import.meta.url).href;}
@@ -12,17 +12,19 @@ function preparePano(image){const width=2048,height=1024,im=readPixels(image,wid
   const overlap=40;for(let y=0;y<height;y++)for(let x=0;x<overlap;x++){const i=(y*width+x)*4,j=(y*width+width-x-1)*4;const amount=.5*(1-x/overlap)**2;for(let k=0;k<3;k++){const da=(b[j+k]-b[i+k])*amount;b[i+k]+=da;b[j+k]-=da;}}
   return {width,height,pixels:new Uint32Array(im.data.buffer)};
 }
-function siteMap(props){const c=make(SIZE),g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#000';g.fillRect(0,0,SIZE,SIZE);g.translate(SIZE/2,SIZE/2);g.scale(PIXELS,PIXELS);g.fillStyle=g.strokeStyle='#fff';g.lineCap='round';const ellipse=(x,z,rx,rz)=>{g.beginPath();g.ellipse(x,z,rx,rz,0,0,TAU);};ellipse(0,0,12,12);g.fill();g.fillRect(-3.6,5,7.2,70);
-  for(const s of [-1,1]){ellipse(s*25,-8,16,20);g.lineWidth=5.7;g.stroke();g.beginPath();g.moveTo(s*6,4);g.lineTo(s*16,8.5);g.moveTo(s*6,-3);g.lineTo(s*12,-12);g.stroke();}
-  for(const p of plots){const angle=Math.atan2((p.z+8)/20,(p.x-Math.sign(p.x)*25)/16);g.lineWidth=3;g.beginPath();g.moveTo(p.x,p.z);g.lineTo(Math.sign(p.x)*25+16*Math.cos(angle),-8+20*Math.sin(angle));g.stroke();}
-  for(const p of plots){g.save();g.translate(p.x,p.z);g.rotate(-p.angle);g.fillStyle='#efefef';g.fillRect(-3.45,-3.11,6.9,6.22);g.strokeStyle='#f00000';g.lineWidth=.24;g.strokeRect(-3.4,-3.05,6.8,6.1);g.restore();}g.fillStyle='#000';ellipse(0,0,6.15,6.15);g.fill();g.strokeStyle='#c90000';g.lineWidth=.28;g.stroke();
+function siteMap(props){const c=make(SIZE),g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#000';g.fillRect(0,0,SIZE,SIZE);g.translate(SIZE/2,SIZE/2);g.scale(PIXELS,PIXELS);paintDistrictRoads(g,'#fff');const ellipse=(x,z,rx,rz)=>{g.beginPath();g.ellipse(x,z,rx,rz,0,0,TAU);};
+  for(const p of plots){g.save();g.translate(p.x,p.z);g.rotate(-p.angle);g.fillStyle='#000';const {width:w,depth:d}=plotSize(p);g.fillRect(-w/2,-d/2,w,d);g.strokeStyle='#780000';g.lineWidth=.14;g.strokeRect(-w/2,-d/2,w,d);g.restore();}g.fillStyle='#000';ellipse(0,0,6.15,6.15);g.fill();g.strokeStyle='#c90000';g.lineWidth=.28;g.stroke();
   const data=g.getImageData(0,0,SIZE,SIZE).data,stone=new Uint8Array(SIZE*SIZE),brick=new Uint8Array(stone.length);for(let i=0;i<stone.length;i++){stone[i]=data[i*4+1];brick[i]=Math.max(0,data[i*4]-data[i*4+1]);}
   g.setTransform(1,0,0,1,0,0);g.fillStyle='#000';g.fillRect(0,0,SIZE,SIZE);g.translate(SIZE/2,SIZE/2);g.scale(PIXELS,PIXELS);
   let seed=13872;const r=()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/4294967296);
   function puddle(x,z,intensity,rx,rz){g.save();g.translate(x,z);g.scale(rx,rz);const glow=g.createRadialGradient(0,0,0,0,0,1);glow.addColorStop(0,'rgba(255,255,255,'+intensity+')');glow.addColorStop(.3,'rgba(255,255,255,'+intensity*.52+')');glow.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=glow;g.fillRect(-1,-1,2,2);g.restore();}
   for(const p of props.filter(q=>q.k.startsWith('lamp')||q.k==='tree')){const star=p.k==='tree';puddle(p.x+.29,p.z+.3,star?.80:.72,star?9.4:3.9,star?11:5.1);for(let i=0;i<(star?690:115);i++){const d=r(),spread=star?5.0:1.5,x=p.x+.35+(r()-.5)*(spread+2*d),z=p.z+1+d*(star?24:5.7);puddle(x,z,(1-d)*(.12+r()*.53),.09+r()*(star?.71:.41),.035+r()*.10);}
     if(star){for(let i=0;i<15;i++){const angle=TAU*i/15;puddle(4.9*Math.sin(angle),4.9*Math.cos(angle),.32+r()*.19,1.15,1.8);}}}
-  const out=g.getImageData(0,0,SIZE,SIZE).data,light=new Uint8Array(stone.length);for(let i=0;i<stone.length;i++)light[i]=out[i*4];return {stone,brick,light};
+  const out=g.getImageData(0,0,SIZE,SIZE).data,light=new Uint8Array(stone.length);for(let i=0;i<stone.length;i++)light[i]=out[i*4];
+  g.save();g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,SIZE,SIZE);g.restore();
+  g.lineWidth=.21;g.lineCap='butt';for(const street of districts){g.strokeStyle=street.color;
+    for(const side of [-1,1])for(let d=13.5;d<42;d+=.98){const a=streetPoint(street,d,side*2.97),b=streetPoint(street,d+.88,side*2.97);g.beginPath();g.moveTo(a.x,a.z);g.lineTo(b.x,b.z);g.stroke();}}
+  const accents=new Uint32Array(g.getImageData(0,0,SIZE,SIZE).data.buffer);return {stone,brick,light,accents};
 }
 export function createLandscape(props,textures){const trace=reflectedSprites(props,textures);const masks=siteMap(props),surface=make(8),sctx=surface.getContext('2d',{alpha:false});let pano,wet,powder,epoch=0,data,buf,cache='',lastCamera='',stableAt=0,frameScale=.83,paintedAt=0;
   loadTexture('winter-dome.webp',i=>{pano=preparePano(i);epoch++;});loadTexture('wet-setts.webp',i=>{wet=tiledMaterial(i);epoch++;});loadTexture('snow.webp',i=>{powder=tiledMaterial(i);epoch++;});
@@ -48,6 +50,7 @@ export function createLandscape(props,textures){const trace=reflectedSprites(pro
           const weight=(hit>>>24)/255*fresnel*(.57+.43*(pa&255)/255);
           r+=((hit&255)-r)*weight;g+=((hit>>8&255)-g)*weight;b+=((hit>>16&255)-b)*weight;}
         sr+=heat*.33;sg+=heat*.16;sb+=heat*.036;const f=road/255;r=sr+(r-sr)*f;g=sg+(g-sg)*f;b=sb+(b-sb)*f;if(brick){const a=brick/255;r+=(115+(pa&255)*.21-r)*a;g+=(78+(pa>>8&255)*.17-g)*a;b+=(77+(pa>>16&255)*.14-b)*a;}
+        const trim=inside?masks.accents[mi]:0;if(trim){const t=(trim>>>24)/360;r+=((trim&255)-r)*t;g+=((trim>>8&255)-g)*t;b+=((trim>>16&255)-b)*t;}
         if(dist>49){const old=buf[start+x],fog=Math.min(1,(dist-49)/48);const smooth=fog*fog*(3-2*fog);r+=((old&255)-r)*smooth;g+=((old>>8&255)-g)*smooth;b+=((old>>16&255)-b)*smooth;}buf[start+x]=0xff000000|Math.min(255,r)|Math.min(255,g)<<8|Math.min(255,b)<<16;
       }
     }sctx.putImageData(data,0,0);ctx.drawImage(surface,0,0,W,H);cache=SK;const cost=performance.now()-t;if(!stable){if(cost>32)frameScale=Math.max(.55,frameScale-.06);else if(cost<14)frameScale=Math.min(.94,frameScale+.013);}

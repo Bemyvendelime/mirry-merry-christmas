@@ -22,6 +22,13 @@
       "when": 1795437924122,
       "tag": "0002_avatar_jumps",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795438841568,
+      "tag": "0003_cottage_rooms",
+      "breakpoints": true
     }
   ]
 }

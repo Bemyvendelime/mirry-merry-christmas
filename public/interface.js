@@ -1,11 +1,18 @@
 import {plots} from './layout.js';
-import {createMinimap} from './minimap.js';
+import {createMinimap,plazaMapMarkup} from './minimap.js';
+import {atDoor,plazaRoom,shopRoom} from './room-space.js';
+import {createFootsteps} from './footsteps.js';
+import {setupChat} from './room-chat.js';
 const $=id=>document.getElementById(id), panel=$('panel'), content=$('contents');
 const kinds={empty:'빈 칸',bench:'벤치',snowman:'눈사람',light:'조명',pine:'작은 전나무'};
 const saved=(k,f='')=>{try{return localStorage.getItem('osc-'+k)||f}catch{return f}};
 const save=(k,v)=>{try{localStorage.setItem('osc-'+k,v)}catch{}};
 let world,state={players:[],objects:[],claimed:[]},nearest=null,online=false,timer,settings;
 const profileCache=new Map();
+const footsteps=createFootsteps($('footSound'));
+let epoch=0,doorPending=false;
+const roomContext=()=>({room:world?.player.room??plazaRoom,visit:world?.player.visit??0});
+const chat=setupChat(api,roomContext,()=>world?.focus());
 let profilePhoto='',photoRequest=0,preview,previewModule,converting=false,joining=false;
 $('name').value=saved('name');
 $('bio').value=saved('bio');
@@ -144,21 +151,25 @@ const drop=$('drop');
 for(const type of ['dragenter','dragover'])drop.addEventListener(type,e=>{e.preventDefault();drop.classList.add('drag')});
 drop.addEventListener('dragleave',e=>{if(!drop.contains(e.relatedTarget))drop.classList.remove('drag')});
 drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag');choosePhoto(e.dataTransfer.files[0])});
-async function api(action,fields={}){const res=await fetch('/api/world',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...fields}),signal:AbortSignal.timeout(10000)});const v=await res.json();if(!res.ok){const e=new Error(v.error||'요청을 처리하지 못했어요.');e.status=res.status;throw e}return v}
+async function api(action,fields={}){const res=await fetch('/api/world',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...(action==='join'?{}:roomContext()),...fields}),signal:AbortSignal.timeout(10000)});const v=await res.json();if(!res.ok){const e=new Error(v.error||'요청을 처리하지 못했어요.');e.status=res.status;e.position=v.position;throw e}return v}
 function show(html){content.innerHTML=html;if(!panel.open)panel.showModal()}
 $('close').onclick=()=>panel.close();panel.addEventListener('click',e=>{if(e.target===panel){const b=panel.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)panel.close()}});
-function help(){show('<h2>광장 이용 안내</h2><p><b>컴퓨터</b><br>W A S D 또는 방향키로 걷고, 화면을 드래그해 둘러보세요. 스페이스바를 누르면 점프하고 Shift를 누르면 빨리 걷고, Tab을 누를 때마다 후방 3인칭, 1인칭, 정면 3인칭 순서로 바뀌어요. Esc를 누르면 오른쪽 위 메뉴로 이동해요.</p><p><b>모바일</b><br>왼쪽 조이스틱으로 걷고 오른쪽 아래 점프 버튼으로 뛰어오르세요. 화면을 드래그하면 주위를 둘러볼 수 있어요. 오른쪽 위에서 후방 3인칭, 1인칭, 정면 3인칭을 선택할 수 있어요.</p><p><b>팀 부지</b><br>벽돌 테두리 가까이 가면 꾸미기 버튼이 나타나요. 팀 편집 코드를 공유하면 팀원들이 같은 부지를 함께 꾸밀 수 있어요.</p><a href="/scene-assets/starlit-courtyard.blend" download>월드 블렌더 원본 받기</a><p><b>ThreeRT 네이티브 장면</b><br>하드웨어 레이트레이싱으로 광장을 둘러볼 수 있어요. 팀 부지 편집은 웹 광장에서 진행해요.</p><div class="native-links"><a href="threerts://osc-starlit-courtyard.bentivoglio0806.chatgpt.site/scene-assets/threert/" target="_blank" rel="noopener">ThreeRT 앱에서 열기</a><a href="/scene-assets/starlit-threert.zip" download>장면 파일 받기</a></div>')}
+function help(){show('<h2>월드 이용 안내</h2><p><b>다섯 거리와 오두막</b><br>중앙 트리에서 뻗은 다섯 거리에 가게 자리가 세 곳씩 있어요. 별빛 거리 A1 오두막의 문 앞에서 E를 누르거나 출입 버튼을 터치하세요. 실내에서 Enter를 누르면 같은 방 사람에게 메시지를 쓸 수 있어요. 남쪽 문으로 나가면 광장으로 돌아와요.</p><p><b>컴퓨터</b><br>WASD 또는 방향키로 걷고, 드래그로 둘러보세요. Space로 점프하고 Shift로 빨리 걸어요. Tab은 후방 3인칭, 1인칭, 정면 3인칭을 차례로 전환해요.</p><p><b>모바일</b><br>왼쪽 조이스틱으로 걷고 점프 버튼으로 뛰어오르세요. 화면을 드래그하면 주위를 둘러볼 수 있어요.</p><p><b>팀 부지</b><br>빈 부지의 표지판 가까이에서 꾸미기 버튼을 누르세요. 팀 편집 코드를 공유하면 팀원이 함께 꾸밀 수 있어요.</p><div class="native-links"><a href="/scene-assets/starlit-courtyard.blend" download>이전 광장 블렌더 파일</a><a href="threerts://osc-starlit-courtyard.bentivoglio0806.chatgpt.site/scene-assets/threert/" target="_blank" rel="noopener">이전 광장 ThreeRT에서 열기</a><a href="/scene-assets/starlit-threert.zip" download>이전 ThreeRT 장면 받기</a></div>')}
 $('help').onclick=help;
 const drawMinimap=createMinimap($('minimap'));
 function frame(p){
   drawMinimap(p);
+  const indoors=p.room===shopRoom,door=$('doorAction');
+  door.hidden=!atDoor(p.room,p.x,p.z);door.disabled=doorPending;
+  const doorText=indoors?'광장으로 나가기':'오두막 들어가기';
+  if(door.textContent!==doorText)door.textContent=doorText;
   let place=null,distance=Infinity;
-  for(const plot of plots){
+  if(!indoors)for(const plot of plots){
     const d=Math.hypot(p.x-plot.x,p.z-plot.z);
     if(d<distance){place=plot;distance=d;}
   }
-  if(place!==nearest)$('editNearby').textContent=place.id+' 부지 꾸미기';
-  nearest=place;$('editNearby').hidden=distance>6.2;
+  if(place&&place!==nearest)$('editNearby').textContent=place.label+' 부지 꾸미기';
+  nearest=place;$('editNearby').hidden=indoors||!place||place.id==='cottage'||distance>6.2;
 }
 function applyProfiles(snapshot){
   for(const player of snapshot.players){
@@ -167,42 +178,98 @@ function applyProfiles(snapshot){
   }
   world.apply(snapshot);
 }
-async function syncProfiles(snapshot){
+async function syncProfiles(snapshot,generation){
   const ids=new Set(snapshot.players.map(p=>p.id));
   for(const id of profileCache.keys())if(!ids.has(id))profileCache.delete(id);
   const pending=snapshot.players.filter(p=>p.id!==world.player.id&&p.profileKey&&profileCache.get(p.id)?.profileKey!==p.profileKey);
   for(let i=0;i<pending.length;i+=32){
     const {profiles}=await api('profiles',{ids:pending.slice(i,i+32).map(p=>p.id)});
+    if(generation!==epoch)return;
     for(const p of profiles)profileCache.set(p.id,p);
   }
-  if(pending.length)applyProfiles(state);
+  if(pending.length&&generation===epoch)applyProfiles(snapshot);
 }
-async function sync(){let wait=900;try{const {x,z,yaw,jumpSeq,jumpStart}=world.player;state=await api('sync',{x,z,yaw,jumpSeq:performance.now()-jumpStart<2400?jumpSeq:0});applyProfiles(state);online=true;$('presence').textContent='접속 '+state.players.length+'명';$('notice').textContent='';await syncProfiles(state).catch(()=>{})}catch(e){online=false;$('presence').textContent='재연결 중';$('notice').textContent='연결을 복구하고 있어요. 팀 편집은 연결 후 사용할 수 있어요.';wait=2200;if(e.status===401)try{const v=await api('join',settings);world.player.id=v.id}catch{}}finally{timer=setTimeout(sync,wait)}}
+function roomHUD(room){
+  const indoor=room===shopRoom;
+  document.body.dataset.room=room;
+  $('openmap').setAttribute('aria-label',indoor?'오두막 미니맵 · 실내 지도 열기':'내 위치 미니맵 · 전체 지도 열기');
+  $('presence').textContent=(indoor?'오두막':'광장')+' · 연결 중';
+  chat.enter(indoor);frame(world.player);
+}
+function changeRoom(position){
+  epoch++;clearTimeout(timer);profileCache.clear();online=false;
+  state={players:[],objects:[],claimed:[],messages:[]};
+  world.setRoom(position);roomHUD(position.room);
+}
+function scheduleSync(delay){
+  clearTimeout(timer);timer=setTimeout(sync,delay);
+}
+async function sync(){
+  const generation=epoch;
+  let wait=900;
+  try{
+    const {x,z,yaw,jumpSeq,jumpStart}=world.player;
+    const snapshot=await api('sync',{x,z,yaw,jumpSeq:performance.now()-jumpStart<2400?jumpSeq:0});
+    if(generation!==epoch||doorPending)return;
+    state=snapshot;applyProfiles(snapshot);online=true;
+    $('presence').textContent=(snapshot.room===shopRoom?'오두막':'광장')+' · '+snapshot.players.length+'명';
+    $('notice').textContent='';chat.display(snapshot.messages);
+    await syncProfiles(snapshot,generation).catch(()=>{});
+  }catch(e){
+    if(generation!==epoch||doorPending)return;
+    online=false;$('presence').textContent='재연결 중';$('notice').textContent='월드에 다시 연결하고 있어요.';wait=2200;
+    try{
+      const position=e.position||(e.status===401?await api('join',settings):null);
+      if(position&&generation===epoch){changeRoom(position);scheduleSync(0);}
+    }catch{}
+  }finally{if(generation===epoch&&!doorPending)scheduleSync(wait);}
+}
+$('doorAction').onclick=async()=>{
+  const p=world?.player;
+  if(!p||doorPending||!atDoor(p.room,p.x,p.z))return;
+  doorPending=true;epoch++;clearTimeout(timer);world.freeze(true);$('doorAction').disabled=true;
+  try{
+    const {position}=await api('door',{x:p.x,z:p.z});changeRoom(position);
+    $('notice').textContent='';
+  }catch(e){
+    if(e.position)changeRoom(e.position);
+    else $('notice').textContent=e.message;
+  }finally{
+    doorPending=false;world.freeze(false);frame(world.player);world.focus();scheduleSync(0);
+  }
+};
 $('join').onsubmit=async e=>{
   e.preventDefault();
   const name=$('name').value.trim(),bio=$('bio').value.trim();
   if(!name||converting||joining||(sourceFile&&!profilePhoto))return;
+  footsteps.unlock();
   joining=true;$('buildBody').disabled=true;$('enter').disabled=true;$('back').disabled=true;$('portrait').disabled=true;
   $('joinStatus').textContent='광장을 열고 있어요…';
   try{
     settings={name,bio,photo:profilePhoto,color:'#ac4f4c'};
-    if(!world){const {startWorld}=await import('./play.js');world=await startWorld(frame,seq=>{api('jump',{jumpSeq:seq}).catch(()=>{})});}
+    if(!world){const {startWorld}=await import('./play.js');world=await startWorld(frame,seq=>{api('jump',{jumpSeq:seq}).catch(()=>{})},footsteps);}
     const p=await api('join',{...settings,arrival:true});
     save('name',name);save('bio',bio);
-    world.start({...p,...settings});frame(world.player);
+    world.start({...p,...settings});roomHUD(p.room);
     $('profile').hidden=true;$('hud').hidden=false;
     preview?.dispose();preview=null;await sync();
   }catch(error){$('joinStatus').textContent='입장하지 못했어요. '+(error.message||'연결을 확인해 주세요.');}
   finally{joining=false;$('buildBody').disabled=false;$('enter').disabled=false;$('back').disabled=false;$('portrait').disabled=false;}
 };
-function map(){const p=world.player;const dots=plots.map(v=>'<g><rect x="'+(v.x-2.7)+'" y="'+(v.z-2.7)+'" width="5.4" height="5.4" rx=".8" fill="'+(v.id[0]==='A'?'#a76657':'#64769f')+'"/><text x="'+v.x+'" y="'+(v.z+1)+'" text-anchor="middle" fill="#fff9e8" font-size="2.6">'+v.id+'</text></g>').join('');
-  show('<h2>광장 지도</h2><svg class="plotmap" viewBox="-55 -43 110 89" role="img" aria-label="서쪽 A구역 6부지, 동쪽 B구역 7부지, 중앙 별 트리"><g fill="none" stroke="#839099" stroke-width="2"><ellipse cx="-25" cy="-8" rx="16" ry="20"/><ellipse cx="25" cy="-8" rx="16" ry="20"/><circle r="10"/><path d="M0 10V39"/></g>'+dots+'<text x="0" y="2" text-anchor="middle" fill="#f8dba2" font-size="7">✴</text><circle cx="'+p.x+'" cy="'+p.z+'" r="2.1" fill="#95f5cb" stroke="#172c38" stroke-width=".5"/></svg><div class="legend"><span>✴ 중앙 트리</span><span>● 내 위치</span></div><p>왼쪽은 A구역, 오른쪽은 B구역이에요. 꾸밀 부지까지 걸어가세요.</p>')}
+function map(){
+  const p=world.player,indoors=p.room===shopRoom;
+  const title=indoors?'A1 눈꽃 오두막':'광장 지도';
+  const legend=indoors?'● 내 위치 · 남쪽 문은 광장으로 이어져요.':'✴ 중앙 트리　● 내 위치　⌂ A1 눈꽃 오두막';
+  const description=indoors?'':'<p>각 거리에 팀 부지가 세 곳씩 있어요. 별빛 거리 A1 오두막은 지금 들어갈 수 있어요.</p>';
+  show('<h2>'+title+'</h2>'+plazaMapMarkup(p)+'<div class="legend">'+legend+'</div>'+description);
+}
 $('openmap').onclick=map;
+const plotLabel=id=>plots.find(p=>p.id===id)?.label||id;
 function codeFor(id){return saved('team-'+id)}
 function newCode(){return Array.from(crypto.getRandomValues(new Uint8Array(7)),x=>x.toString(16).padStart(2,'0')).join('').toUpperCase()}
 function editing(plot){
   const cells=Array.from({length:9},(_,i)=>state.objects.find(o=>o.plot===plot&&o.slot===i)||{slot:i,kind:'empty',turn:0,version:0});let slot=0;
-  show('<h2>'+plot+' 부지 꾸미기</h2><p>배치할 칸과 장식을 골라 주세요.</p><div class="grid" id="cells"></div><div class="row"><label>장식<select id="kind">'+Object.entries(kinds).map(([k,n])=>'<option value="'+k+'">'+n+'</option>').join('')+'</select></label><label>방향<select id="turn">'+[0,90,180,270].map((t,i)=>'<option value="'+i+'">'+t+'°</option>').join('')+'</select></label></div><button class="primary" id="commit">배치 저장</button><p class="msg" id="edmsg" role="status"></p><details><summary>팀 편집 코드</summary><p>같은 부지를 꾸밀 팀원에게 알려 주세요.</p><span class="teamcode" id="teamkey"></span></details>');
+  show('<h2>'+plotLabel(plot)+' 부지 꾸미기</h2><p>배치할 칸과 장식을 골라 주세요.</p><div class="grid" id="cells"></div><div class="row"><label>장식<select id="kind">'+Object.entries(kinds).map(([k,n])=>'<option value="'+k+'">'+n+'</option>').join('')+'</select></label><label>방향<select id="turn">'+[0,90,180,270].map((t,i)=>'<option value="'+i+'">'+t+'°</option>').join('')+'</select></label></div><button class="primary" id="commit">배치 저장</button><p class="msg" id="edmsg" role="status"></p><details><summary>팀 편집 코드</summary><p>같은 부지를 꾸밀 팀원에게 알려 주세요.</p><span class="teamcode" id="teamkey"></span></details>');
   $('teamkey').textContent=codeFor(plot);
   function pick(i){slot=i;[...$('cells').children].forEach((b,j)=>b.classList.toggle('sel',i===j));$('kind').value=cells[i].kind;$('turn').value=cells[i].turn}
   for(let i=0;i<9;i++){const b=document.createElement('button');b.textContent=(i+1)+' · '+kinds[cells[i].kind];b.onclick=()=>pick(i);$('cells').append(b)}pick(0);
@@ -213,8 +280,8 @@ function editing(plot){
     catch(e){msg.textContent=e.message;if(e.status===409){const fresh=await api('sync',{x:world.player.x,z:world.player.z,yaw:world.player.yaw});state=fresh;applyProfiles(state);editing(plot);$('edmsg').textContent=e.message}}
     finally{btn.disabled=false}};
 }
-$('editNearby').onclick=()=>{if(!online){$('notice').textContent='연결을 복구한 후 사용할 수 있어요.';return}const id=nearest.id;
+$('editNearby').onclick=()=>{if(!nearest||nearest.id==='cottage'||world.player.room!==plazaRoom||doorPending)return;if(!online){$('notice').textContent='연결을 복구한 후 사용할 수 있어요.';return}const id=nearest.id;
   if(codeFor(id)){api('unlock',{plot:id,code:codeFor(id)}).then(()=>editing(id)).catch(e=>{if(e.status===403)save('team-'+id,'');$('notice').textContent=e.message});return}
-  const claimed=state.claimed.includes(id);show('<h2>'+id+' 부지</h2><p>'+(claimed?'팀 편집 코드를 입력하면 함께 꾸밀 수 있어요.':'이 부지를 사용하면 팀원과 공유할 편집 코드가 생겨요.')+'</p>'+(claimed?'<label>팀 편집 코드<input id="codeinput" autocomplete="off" maxlength="24"></label>':'')+'<button class="primary" id="claim">'+(claimed?'팀 편집 열기':'이 부지 사용하기')+'</button><p class="msg" id="edmsg" role="status"></p>');
+  const claimed=state.claimed.includes(id);show('<h2>'+plotLabel(id)+' 부지</h2><p>'+(claimed?'팀 편집 코드를 입력하면 함께 꾸밀 수 있어요.':'이 부지를 사용하면 팀원과 공유할 편집 코드가 생겨요.')+'</p>'+(claimed?'<label>팀 편집 코드<input id="codeinput" autocomplete="off" maxlength="24"></label>':'')+'<button class="primary" id="claim">'+(claimed?'팀 편집 열기':'이 부지 사용하기')+'</button><p class="msg" id="edmsg" role="status"></p>');
   if(claimed&&saved('pending-'+id))$('codeinput').value=saved('pending-'+id);
   $('claim').onclick=async()=>{const code=claimed?$('codeinput').value.trim().toUpperCase():(saved('pending-'+id)||newCode());if(!claimed)save('pending-'+id,code);$('claim').disabled=true;try{await api(claimed?'unlock':'claim',{plot:id,code});save('team-'+id,code);save('pending-'+id,'');if(!state.claimed.includes(id))state.claimed.push(id);editing(id)}catch(e){$('edmsg').textContent=e.message;$('claim').disabled=false}}};

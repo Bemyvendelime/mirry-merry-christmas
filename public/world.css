@@ -58,3 +58,28 @@
 
 #jump {display:none;position:absolute;right:max(22px,env(safe-area-inset-right));bottom:max(30px,env(safe-area-inset-bottom));width:59px;height:59px;border-radius:50%;border:1px solid #e3d8b988;background:rgb(25 38 57 / 50%);color:#fff9ec;font-size:14px;touch-action:manipulation;user-select:none}
 @media(any-pointer:coarse){#jump{display:block}.lower{bottom:max(101px,calc(env(safe-area-inset-bottom) + 76px))}}
+
+#roomChat,#chatOpen {position:absolute;z-index:2;pointer-events:auto;left:max(16px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));color:#fff4de}
+#roomChat {width:min(296px,calc(100% - 32px));border:1px solid #c7aa7c80;border-radius:10px;background:#251f20e8;box-shadow:0 4px 18px #21191242;padding:11px}
+.chat-heading,#chatForm {display:flex;align-items:center;gap:7px}.chat-heading{justify-content:space-between}
+.chat-heading strong {font-family:Georgia,serif;font-size:16px}
+#chatClose,#chatOpen,#chatSend {color:#ffe8bc;border:1px solid #c5ab805c;border-radius:6px;background:#4b3b33;padding:4px 9px;font:inherit;font-size:14px}
+#chatClose {background:transparent;border:0;color:#d1c1aa}
+#chatLog {list-style:none;margin:6px 0;padding:0;max-height:clamp(64px,17dvh,148px);overflow:auto;overflow-wrap:anywhere;line-height:1.4;overscroll-behavior:contain}
+#chatLog:empty {display:none}
+#chatLog li {margin:3px 0;color:#fff7e8;font-size:14px}
+#chatLog b {margin-right:.45em;color:#ffd495;font-size:13px}
+#chatEmpty {color:#d9cabc;font-size:14px;margin:8px 0}
+#chatInput {min-width:0;flex:1;color:#fff8e7;border:1px solid #baa07c6b;background:#2c2729;border-radius:6px;padding:7px 8px;font:inherit;font-size:16px}
+#chatInput::placeholder {color:#c3b4a2}#chatStatus {font-size:13px}
+#doorAction {background:#ffdea1;color:#372c28;border-color:#b38b56}
+.lower {gap:8px;justify-content:flex-end}
+.lower button {margin-left:0}
+@media(any-pointer:coarse){
+  #roomChat,#chatOpen{bottom:max(151px,calc(env(safe-area-inset-bottom) + 138px));left:max(10px,env(safe-area-inset-left))}
+  #roomChat{width:min(264px,calc(100% - 28px))}
+  #chatLog{max-height:min(15dvh,96px)}
+}
+@media(max-height:540px) and (any-pointer:coarse){#roomChat,#chatOpen{bottom:12px;left:142px}#chatLog{max-height:52px}}
+
+#footSound{display:inline-grid;place-items:center;min-height:36px;padding:6px 9px}#footSound[aria-pressed=true] .muted,#footSound[aria-pressed=false] .waves{display:none}

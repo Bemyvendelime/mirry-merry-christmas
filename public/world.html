@@ -51,13 +51,22 @@
             <option value="front">정면 3인칭</option>
           </select>
         </label>
+        <button id="footSound" type="button" aria-label="내 발소리 끄기" aria-pressed="true"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h4l5-4v14l-5-4H3z"/><path class="waves" d="M15.1 8a5.6 5.6 0 0 1 0 8m2.7-11a9.7 9.7 0 0 1 0 14"/><path class="muted" d="m16 9 5 6m0-6-5 6"/></svg></button>
         <button id="help" type="button">도움말</button>
       </div>
       <p class="control-hint"><span class="keyboard-hint">WASD / 방향키 이동 · Space 점프 · 드래그 시점 · Tab 전환</span><span class="touch-hint">조이스틱 이동 · 드래그 시점</span></p>
     </div>
   </div>
   <div id="notice" role="status"></div>
-  <div class="lower"><button id="editNearby" hidden>부지 꾸미기</button></div>
+  <aside id="roomChat" aria-label="오두막 대화" hidden>
+    <div class="chat-heading"><strong>오두막 대화</strong><button type="button" id="chatClose" aria-label="대화 접기">접기</button></div>
+    <ol id="chatLog" role="log" aria-live="polite" aria-label="실내 대화"></ol>
+    <p id="chatEmpty">이 방의 첫 인사를 남겨 보세요.</p>
+    <form id="chatForm"><input id="chatInput" aria-label="실내 메시지" placeholder="이 방에 메시지 쓰기" maxlength="240" autocomplete="off" required><button id="chatSend" type="submit">보내기</button></form>
+    <output id="chatStatus" role="status"></output>
+  </aside>
+  <button type="button" id="chatOpen" hidden>오두막 대화</button>
+  <div class="lower"><button type="button" id="doorAction" hidden>오두막 들어가기</button><button id="editNearby" hidden>부지 꾸미기</button></div>
   <button id="jump" type="button">점프</button>
   <div id="stick" aria-label="이동 조이스틱"><i></i></div>
 </section>
