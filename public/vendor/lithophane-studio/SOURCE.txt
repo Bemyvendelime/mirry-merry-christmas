@@ -1,0 +1,3 @@
+Lithophane Studio, https://github.com/metiutek/lithophane-studio
+Commit e111530a741213ae273dd98116a53e16de3733f6
+mesh.js and LICENSE are unchanged. processImage and buildMesh convert a photo to a closed 3D relief. The courtyard fits that mesh to its animated head attachment.

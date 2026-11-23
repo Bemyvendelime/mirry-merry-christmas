@@ -1,6 +1,8 @@
 import { sqliteTable, text, real, integer, index } from "drizzle-orm/sqlite-core";
 export const visitors = sqliteTable("visitors", {
   id:text("id").primaryKey(), name:text("name").notNull(), color:text("color").notNull(),
+  photo:text("photo").notNull().default(""), bio:text("bio").notNull().default(""),
+  profileKey:text("profile_key").notNull().default(""),
   x:real("x").notNull(), z:real("z").notNull(), yaw:real("yaw").notNull(), seen:integer("seen").notNull(),
 }, t=>[index("visitors_seen").on(t.seen)]);
 export const teams=sqliteTable("teams",{plot:text("plot").primaryKey(),keyhash:text("keyhash").notNull()});

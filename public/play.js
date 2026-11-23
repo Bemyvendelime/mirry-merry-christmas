@@ -1,31 +1,19 @@
 import * as T from 'three';
-import {createReflectedPaving} from './reflected-paving.js';
+import {createPixelSplats} from './pixel-splats.js';
 import {buildScenery} from './world-scene.js';
 import {createAvatars} from './avatars.js';
 import {plots} from './layout.js';
-export async function startWorld(onFrame, initialView='raytracing'){
+export async function startWorld(onFrame){
   const root=document.querySelector('#game');
   let renderer,software=false;
   try {renderer=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'})}
   catch {const {createCanvasView}=await import('./canvas-view.js');renderer=createCanvasView(root);software=true}
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.65));root.replaceChildren(renderer.domElement);
   const scene=new T.Scene(),cam=new T.PerspectiveCamera(64,1,.12,360),scenery=software?{update(){}}:buildScenery(scene),avatars=software?{render:players=>renderer.setActors(players)}:createAvatars(scene);
-  let style, latestChange=0, pixelModule, pixelRenderer, reflectedPaving;
-  async function setStyle(value){
-    const change=++latestChange;
-    if(software)renderer.setStyle(value);
-    else if(value==='gaussian-pixelart'){
-      pixelModule ||= import('./pixel-splats.js').catch(error=>{pixelModule=null;throw error});
-      const {createPixelSplats}=await pixelModule;
-      if(change!==latestChange)return;
-      pixelRenderer ||= createPixelSplats(renderer,scene);
-    }else if(value==='raytracing'){
-      reflectedPaving ||= createReflectedPaving(renderer,scenery.ground);
-    }
-    style=value;
-    root.dataset.renderView=value;
-    root.dataset.graphics=software?'canvas':'webgl2';
-  }
+  const pixelRenderer=software?null:createPixelSplats(renderer,scene);
+  if(software)renderer.setStyle('gaussian-pixelart');
+  root.dataset.renderView='gaussian-pixelart';
+  root.dataset.graphics=software?'canvas':'webgl2';
   let heading=0,pitch=.24,deltaStick={x:0,y:0},t0=performance.now(),elapsed=0,last=0,ready=false;
   const player={id:'',x:0,z:31,yaw:0,color:'#ac4f4c'},remotes=new Map(),keys=new Set(),placed=new Map();
   const templates={}, mat=c=>new T.MeshStandardMaterial({color:c,roughness:.85});
@@ -42,7 +30,7 @@ export async function startWorld(onFrame, initialView='raytracing'){
   for(const x of [-.082,.082])piece(new T.SphereGeometry(.028,6,5),mat(0x302d36),x,1.35,-.215,templates.snowman);
   const bench=await fetch('/scene-assets/bench.json').then(r=>{if(!r.ok)throw Error('벤치 파일을 열 수 없어요.');return r.json()});
   for(const p of bench.parts){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p.positions,3));g.computeVertexNormals();piece(g,mat(p.color),0,0,0,templates.bench)}
-  const res=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};addEventListener('resize',res);res();await setStyle(initialView);
+  const res=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()};addEventListener('resize',res);res();
   const canMove=()=>ready&&!document.querySelector('dialog').open;
   addEventListener('keydown',e=>{if(canMove()&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','KeyE','ShiftLeft','ShiftRight'].includes(e.code)){keys.add(e.code);e.preventDefault()}});
   addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
@@ -60,12 +48,13 @@ export async function startWorld(onFrame, initialView='raytracing'){
     for(const p of players){
       if(p.id===player.id||Math.hypot(p.x-player.x,p.z-player.z)>15||nearby.size>=18)continue;
       nearby.add(p.id);let label=labels.get(p.id);
+      if(label&&label.userData.name!==p.name){scene.remove(label);label.material.map.dispose();label.material.dispose();label=null;}
       if(!label){const canvas=document.createElement('canvas');canvas.width=320;canvas.height=72;
         const ctx=canvas.getContext('2d');ctx.font='bold 29px sans-serif';ctx.textAlign='center';
         const width=Math.min(318,ctx.measureText(p.name).width+32);
         ctx.fillStyle='#17263ed9';ctx.fillRect((320-width)/2,7,width,53);ctx.fillStyle='#fff4db';ctx.fillText(p.name,160,44,295);
         const tex=new T.CanvasTexture(canvas);tex.colorSpace=T.SRGBColorSpace;
-        label=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));label.scale.set(2.45,.55,1);scene.add(label);labels.set(p.id,label)}
+        label=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));label.userData.name=p.name;label.scale.set(2.45,.55,1);scene.add(label);labels.set(p.id,label)}
       label.position.set(p.x,2.15,p.z)}
     for(const [id,label] of labels)if(!nearby.has(id)){scene.remove(label);label.material.map.dispose();label.material.dispose();labels.delete(id)}
   }
@@ -86,15 +75,14 @@ export async function startWorld(onFrame, initialView='raytracing'){
     cam.position.lerp(desired,first?1:1-Math.exp(-dt*12));
     look.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch)).add(cam.position);
     cam.lookAt(look);first=false;scenery.update(elapsed);
-    if(!software&&style==='gaussian-pixelart')pixelRenderer.render(cam);
-    else if(!software&&style==='raytracing')reflectedPaving(scene,cam);
+    if(!software)pixelRenderer.render(cam);
     else renderer.render(scene,cam);
     if(t-last>200){last=t;onFrame(player)}}
-  return {player,setStyle,start(p){Object.assign(player,p);
+  return {player,start(p){Object.assign(player,p);
     const r=Math.hypot(player.x,player.z);
     if(r<6.45){player.x=r>.01?player.x*6.5/r:0;player.z=r>.01?player.z*6.5/r:6.5}
     ready=true;renderer.setAnimationLoop(render)},apply(state){const live=new Set();
-    for(const p of state.players){if(p.id===player.id)continue;live.add(p.id);const r=remotes.get(p.id)||{...p};Object.assign(r,{tx:p.x,tz:p.z,tyaw:p.yaw,color:p.color});remotes.set(p.id,r)}for(const id of remotes.keys())if(!live.has(id))remotes.delete(id);
+    for(const p of state.players){if(p.id===player.id)continue;live.add(p.id);const r=remotes.get(p.id)||{...p};Object.assign(r,{tx:p.x,tz:p.z,tyaw:p.yaw,color:p.color,photo:p.photo||'',name:p.name});remotes.set(p.id,r)}for(const id of remotes.keys())if(!live.has(id))remotes.delete(id);
     if(software){renderer.setObjects(state.objects);return}
     for(const o of state.objects){const key=o.plot+'-'+o.slot,old=placed.get(key);if(old?.version===o.version)continue;if(old?.mesh)scene.remove(old.mesh);let mesh=null;
       if(o.kind!=='empty'&&templates[o.kind]){const plot=plots.find(p=>p.id===o.plot);if(!plot)continue;mesh=templates[o.kind].clone();const a=plot.angle,lx=(o.slot%3-1)*1.8,lz=(Math.floor(o.slot/3)-1)*1.7;mesh.position.set(plot.x+lx*Math.cos(a)+lz*Math.sin(a),.11,plot.z-lx*Math.sin(a)+lz*Math.cos(a));mesh.rotation.y=a+o.turn*Math.PI/2;scene.add(mesh)}placed.set(key,{version:o.version,mesh})}

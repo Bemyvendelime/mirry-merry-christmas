@@ -1,11 +1,36 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#17243a"><title>별빛광장 · OSC</title><link rel="icon" href="/star.svg"><link rel="stylesheet" href="world.css"><script type="importmap">{"imports":{"three":"/vendor/three.js"}}</script></head>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#17243a"><title>별빛광장 · OSC</title><link rel="icon" href="/star.svg"><link rel="stylesheet" href="/world.css"><link rel="stylesheet" href="/postcard.css"><script type="importmap">{"imports":{"three":"/vendor/three.js"}}</script></head>
 <body><main id="game" aria-label="별빛광장 3D 월드"></main>
-<section id="welcome"><div class="photo"></div><div class="shade"></div>
-<header class="mast"><span class="brandstar">✴</span><span>OSC <span class="slash">/</span> WINTER WORKSHOP</span></header>
-<div class="introwrap"><div class="titleblock"><div class="kicker"><i></i> THE STARLIT COURTYARD</div><h1>별빛광장</h1><p>눈 내린 광장에서 만나, 우리 팀의 크리스마스를 만들어요.</p></div>
-<form id="join" class="glass"><label for="name">월드에서 사용할 별명</label><input id="name" required maxlength="12" autocomplete="nickname" placeholder="별명 입력" /><fieldset><legend>코트 색상</legend><div id="colors"></div></fieldset><fieldset class="view-field"><legend>광장 표현</legend><div class="view-choices"><label><input type="radio" name="view" value="raytracing" checked><span>빛 반사</span></label><label><input type="radio" name="view" value="gaussian-pixelart"><span>가우시안 픽셀</span></label><label><input type="radio" name="view" value="classic"><span>기본</span></label></div></fieldset><button id="enter" class="primary">광장에 입장하기</button><output id="joinStatus" role="status"></output></form></div>
-<footer><span>OSC · CHRISTMAS MARKET</span><button id="instructions">조작 방법</button></footer></section>
-<section id="hud" hidden><div class="gamehead"><div class="nameplate"><b>✴</b><div><small>OSC WINTER WORKSHOP</small><strong id="location">별빛광장</strong></div></div><div class="actions"><span id="presence">연결 중</span><button id="appearance">화면</button><button id="openmap">지도</button><button id="help">도움말</button></div></div>
+<section id="welcome" aria-label="크리스마스 엽서">
+  <picture class="card-art" aria-hidden="true">
+    <source media="(max-aspect-ratio: 4/5)" srcset="/scene-assets/postcard-portrait.webp">
+    <img src="/scene-assets/postcard.webp" alt="" fetchpriority="high">
+  </picture>
+  <h1 class="card-title"><img src="/scene-assets/postcard-title.png" alt="mirry merry christmas"></h1>
+  <button id="openProfile" class="stamp-button" type="button">입장</button>
+</section>
+<section id="profile" hidden aria-label="캐릭터 만들기">
+  <form id="join">
+    <button id="back" type="button" aria-label="엽서로 돌아가기">‹</button>
+    <h2>사진을 업로드 하세요.</h2>
+    <div class="profile-grid">
+      <div class="model-side">
+        <div id="drop" class="drop-area">
+          <canvas id="rigPreview" width="256" height="272" aria-label="관절 캐릭터 미리보기"></canvas>
+          <label class="file-select" for="portrait">사진 선택<input id="portrait" type="file" accept="image/*"></label>
+          <span class="drop-hint">또는 사진을 여기로 끌어오세요</span>
+        </div>
+        <output id="photoStatus" role="status"></output>
+      </div>
+      <div class="profile-fields">
+        <label for="name">이름</label><input id="name" required maxlength="12" autocomplete="nickname">
+        <label for="bio">자기소개</label><textarea id="bio" maxlength="200" rows="4"></textarea>
+        <button id="enter" class="stamp-button" type="submit">광장에 들어가기</button>
+        <output id="joinStatus" role="status"></output>
+      </div>
+    </div>
+  </form>
+</section>
+<section id="hud" hidden><div class="gamehead"><div class="nameplate"><b>✴</b><div><small>OSC WINTER WORKSHOP</small><strong id="location">별빛광장</strong></div></div><div class="actions"><span id="presence">연결 중</span><button id="openmap">지도</button><button id="help">도움말</button></div></div>
 <div id="notice" role="status"></div><div class="lower"><span class="keys">W A S D · 이동　 /　 드래그 · 시점</span><button id="editNearby" hidden>부지 꾸미기</button></div><div id="stick" aria-label="이동 조이스틱"><i></i></div></section>
 <dialog id="panel"><div class="dialogtop"><small>OSC · WINTER WORKSHOP</small><button id="close" aria-label="닫기">×</button></div><div id="contents"></div></dialog>
 <script type="module" src="interface.js"></script></body></html>
