@@ -60,10 +60,10 @@ export function createCanvasView(root) {
     const now=performance.now(),poseDt=Math.min(.1,(now-previousPoseTime)/1000);previousPoseTime=now;poseFrame++;
     subjects.beginFrame();
     for(const [idx,actor] of actors.entries()){
-      const state=advanceRig(rigStates.get(actor.id),actor.id,actor.moving,poseDt,!isWholeSubject(actor.photo));
+      const state=advanceRig(rigStates.get(actor.id),actor.id,actor.moving,poseDt,!isWholeSubject(actor.photo),actor.airPose);
       rigStates.set(actor.id,state);state.frame=poseFrame;
       if(hideSelf&&idx===0)continue;
-      draw.push({x:actor.x,z:actor.z,h:2.06,w:isWholeSubject(actor.photo)?2.4:.82,actor,state,local:idx===0,label:idx?actor.name:''});
+      draw.push({x:actor.x,y:actor.y||0,z:actor.z,h:2.06,w:isWholeSubject(actor.photo)?2.4:.82,actor,state,local:idx===0,label:idx?actor.name:''});
     }
     for(const [id,state] of rigStates)if(state.frame!==poseFrame)rigStates.delete(id);
     for(const obj of objects){if(obj.kind==='empty')continue;const p=plots.find(q=>q.id===obj.plot);if(!p)continue;const lx=(obj.slot%3-1)*1.8,lz=(Math.floor(obj.slot/3)-1)*1.7;draw.push({x:p.x+lx*Math.cos(p.angle)+lz*Math.sin(p.angle),z:p.z-lx*Math.sin(p.angle)+lz*Math.cos(p.angle),h:obj.kind==='bench'?1.4:2,w:obj.kind==='bench'?1.9:1.3,k:obj.kind==='light'?'lamp':obj.kind});}
@@ -111,7 +111,7 @@ export function createCanvasView(root) {
         if(Math.max(baseDepth,topDepth)>.27)items.push({o,tex,base:{d:Math.max(.27,depthAt(o.x,y+Math.min(o.h*.16,3),o.z))}});
         continue;
       }
-      const base=project(o.x,0,o.z),top=project(o.x,o.h,o.z);if(!base||!top)continue;const tall=base.y-top.y,isLamp=o.k?.startsWith('lamp'),key=isLamp&&detailed.has('lamp')?'lamp':o.k,tex=textures.get(key);if((!tex&&!o.actor)||tall<2||tall>H*8||base.y<0||top.y>H||(m[9]<-.93&&base.y>H&&top.y>H*.91))continue;const actual=isLamp&&detailed.has('lamp')||o.k==='tree'&&detailed.has('tree');const ww=tall*(actual?tex.width/tex.height:o.w/o.h);if(base.x+ww<0||base.x-ww>W)continue;items.push({o,base,top,tall,ww,tex,isLamp});}items.sort((a,b)=>b.base.d-a.base.d);
+      const feetY=o.y||0,base=project(o.x,feetY,o.z),top=project(o.x,feetY+o.h,o.z);if(!base||!top)continue;const tall=base.y-top.y,isLamp=o.k?.startsWith('lamp'),key=isLamp&&detailed.has('lamp')?'lamp':o.k,tex=textures.get(key);if((!tex&&!o.actor)||tall<2||tall>H*8||base.y<0||top.y>H||(m[9]<-.93&&base.y>H&&top.y>H*.91))continue;const actual=isLamp&&detailed.has('lamp')||o.k==='tree'&&detailed.has('tree');const ww=tall*(actual?tex.width/tex.height:o.w/o.h);if(base.x+ww<0||base.x-ww>W)continue;items.push({o,base,top,tall,ww,tex,isLamp});}items.sort((a,b)=>b.base.d-a.base.d);
     // The tree bed has a raised stone edge, including a snow cap and distinct joints.
     const curbs=[];for(let i=0;i<46;i++){const a=i*tau/46,b=(i+.96)*tau/46;const x=3.30*Math.cos(a),z=3.30*Math.sin(a),ex=3.30*Math.cos(b),ez=3.30*Math.sin(b);const points=[[x,0,z],[ex,0,ez],[ex,.31,ez],[x,.31,z]].map(p=>project(...p));if(points.every(Boolean))curbs.push({points,depth:points[0].d,i});}curbs.sort((a,b)=>b.depth-a.depth);
     function drawCurb(c){const p=c.points.map(q=>[q.x,q.y]);poly(ctx,p,['#8c8995','#9695a1','#9f9ca5','#8e8e9c'][c.i%4]);ctx.lineWidth=Math.max(1,H/c.depth*.004);ctx.strokeStyle='#d5d9df';ctx.beginPath();ctx.moveTo(p[2][0],p[2][1]);ctx.lineTo(p[3][0],p[3][1]);ctx.stroke();}
@@ -124,19 +124,28 @@ export function createCanvasView(root) {
         }continue;
       }
       const left=base.x-ww/2;const shrub=o.k?.startsWith('shrub'),ridge=o.k?.startsWith('ridge');
-      if(!shrub&&!ridge){const shadow=Math.max(1,Math.min(ww*.40,H/base.d*.30)),height=Math.max(1,Math.min(shadow*.36,12));ctx.save();ctx.translate(base.x,base.y+1);ctx.scale(shadow,height);const fog=ctx.createRadialGradient(0,0,0,0,0,1);fog.addColorStop(0,'rgba(43,47,67,.34)');fog.addColorStop(1,'rgba(43,47,67,0)');ctx.fillStyle=fog;ctx.fillRect(-1,-1,2,2);ctx.restore();}
+      const lift=o.y||0,ground=lift?project(o.x,0,o.z):base;
+      if(!shrub&&!ridge&&ground){
+        const attenuation=1/(1+.58*lift);
+        const shadow=Math.max(1,Math.min(ww*.40,H/ground.d*.30))*(1+.1*lift);
+        const height=Math.max(1,Math.min(shadow*.36,12));
+        ctx.save();ctx.translate(ground.x,ground.y+1);ctx.scale(shadow,height);
+        const fog=ctx.createRadialGradient(0,0,0,0,0,1);
+        fog.addColorStop(0,'rgba(43,47,67,'+(.34*attenuation)+')');fog.addColorStop(1,'rgba(43,47,67,0)');
+        ctx.fillStyle=fog;ctx.fillRect(-1,-1,2,2);ctx.restore();
+      }
       if(o.actor){
         const actor=o.actor,angle=actor.yaw||0,cos=Math.cos(angle),sin=Math.sin(angle);
         if(isWholeSubject(actor.photo)){
           const dx=m[12]-o.x,dz=m[14]-o.z,distance=Math.hypot(dx,dz);
           const facing=angle+Math.PI-Math.atan2(dx,dz);
-          const pitch=Math.atan2(m[13]-.9,Math.max(.01,distance));
+          const pitch=Math.atan2(m[13]-lift-.9,Math.max(.01,distance));
           const scale=H*f*.5/base.d;
-          const tile=subjects.get(actor.photo,facing,pitch,o.state.phase,o.state.gait,tall,o.local);
+          const tile=subjects.get(actor.photo,facing,pitch,o.state.phase,o.state.gait,tall,o.local,o.state.airPose);
           if(tile)ctx.drawImage(tile.canvas,base.x+tile.left*scale,base.y-tile.top*scale,tile.width*scale,tile.height*scale);
         }else{
           paintRig(ctx,o.state.pose,(x,y,z)=>{
-            const pt=project(o.x+x*cos+z*sin,y,o.z-x*sin+z*cos);
+            const pt=project(o.x+x*cos+z*sin,lift+y,o.z-x*sin+z*cos);
             if(pt)pt.scale=H*f*.5/pt.d;
             return pt;
           });

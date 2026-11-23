@@ -4,7 +4,8 @@ import {buildScenery} from './world-scene.js';
 import {createAvatars} from './avatars.js';
 import {plots} from './layout.js';
 import {avatarEyeHeight,modes,movementCameraOffset,placeCamera,wrapAngle} from './world-camera.js';
-export async function startWorld(onFrame){
+import {takeOff,animateJump,applyRemoteJump} from './jump.js';
+export async function startWorld(onFrame,onJump){
   const root=document.querySelector('#game');
   let renderer,software=false;
   try {renderer=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'})}
@@ -37,9 +38,13 @@ export async function startWorld(onFrame){
   const panel=document.querySelector('dialog'),canvas=renderer.domElement;
   const canMove=()=>ready&&!panel.open;
   canvas.tabIndex=0;
-  canvas.setAttribute('aria-label','광장 조작. Tab은 시점 전환, Esc는 메뉴.');
+  canvas.setAttribute('aria-label','광장 조작. 스페이스는 점프, Tab은 시점 전환, Esc는 메뉴.');
   const focusGame=()=>canvas.focus({preventScroll:true});
   panel.addEventListener('close',focusGame);
+  function jump(){
+    if(canMove()&&takeOff(player,performance.now()))onJump(player.jumpSeq);
+  }
+  document.querySelector('#jump').onclick=()=>{focusGame();jump()};
   function selectCamera(value){
     mode=modes.includes(value)?value:'rear';
     heading=player.yaw||0;movementOffset=0;
@@ -50,6 +55,11 @@ export async function startWorld(onFrame){
   addEventListener('keydown',e=>{
     if(!canMove()||e.ctrlKey||e.altKey||e.metaKey||e.isComposing)return;
     const inWorld=e.target===canvas||e.target===document.body||e.target===root;
+    if(e.code==='Space'&&inWorld){
+      e.preventDefault();
+      if(!e.repeat)jump();
+      return;
+    }
     if(e.key==='Tab'&&inWorld&&!e.shiftKey){
       e.preventDefault();
       if(!e.repeat)selectCamera(modes[(modes.indexOf(mode)+1)%modes.length]);
@@ -91,7 +101,7 @@ export async function startWorld(onFrame){
         ctx.fillStyle='#17263ed9';ctx.fillRect((320-width)/2,7,width,53);ctx.fillStyle='#fff4db';ctx.fillText(p.name,160,44,295);
         const tex=new T.CanvasTexture(canvas);tex.colorSpace=T.SRGBColorSpace;
         label=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));label.userData.name=p.name;label.scale.set(2.45,.55,1);scene.add(label);labels.set(p.id,label)}
-      label.position.set(p.x,2.15,p.z)}
+      label.position.set(p.x,2.15+(p.y||0),p.z)}
     for(const [id,label] of labels)if(!nearby.has(id)){scene.remove(label);label.material.map.dispose();label.material.dispose();labels.delete(id)}
   }
   const look=new T.Vector3();
@@ -110,7 +120,8 @@ export async function startWorld(onFrame){
     if(mode==='first')player.yaw=heading;
     const side=player.moving?dx/Math.max(1,Math.hypot(dx,dz)):0;
     movementOffset=movementCameraOffset(movementOffset,side,mode,dt);
-    const visible=[player];for(const r of remotes.values()){const k=Math.min(1,dt*3.6);r.moving=Math.hypot(r.tx-r.x,r.tz-r.z)>.055;r.x+=(r.tx-r.x)*k;r.z+=(r.tz-r.z)*k;r.yaw+=Math.atan2(Math.sin(r.tyaw-r.yaw),Math.cos(r.tyaw-r.yaw))*k;visible.push(r)}
+    animateJump(player,t);
+    const visible=[player];for(const r of remotes.values()){const k=Math.min(1,dt*3.6);r.moving=Math.hypot(r.tx-r.x,r.tz-r.z)>.055;r.x+=(r.tx-r.x)*k;r.z+=(r.tz-r.z)*k;r.yaw+=Math.atan2(Math.sin(r.tyaw-r.yaw),Math.cos(r.tyaw-r.yaw))*k;animateJump(r,t);visible.push(r)}
     avatars.render(visible,dt,mode==='first');updateLabels(visible);
     placeCamera(cam,look,player,mode,heading+movementOffset,tilt,eye,dt,snap);
     snap=false;scenery.update(elapsed);
@@ -122,7 +133,7 @@ export async function startWorld(onFrame){
     if(r<6.45){player.x=r>.01?player.x*6.5/r:0;player.z=r>.01?player.z*6.5/r:6.5}
     heading=player.yaw||0;eye=avatarEyeHeight(player.photo);selectCamera(mode);
     ready=true;focusGame();renderer.setAnimationLoop(render)},apply(state){const live=new Set();
-    for(const p of state.players){if(p.id===player.id)continue;live.add(p.id);const r=remotes.get(p.id)||{...p};Object.assign(r,{tx:p.x,tz:p.z,tyaw:p.yaw,color:p.color,photo:p.photo||'',name:p.name});remotes.set(p.id,r)}for(const id of remotes.keys())if(!live.has(id))remotes.delete(id);
+    for(const p of state.players){if(p.id===player.id)continue;live.add(p.id);const r=remotes.get(p.id)||{id:p.id,x:p.x,z:p.z,yaw:p.yaw};applyRemoteJump(r,p,state.serverNow,performance.now());Object.assign(r,{tx:p.x,tz:p.z,tyaw:p.yaw,color:p.color,photo:p.photo||'',name:p.name});remotes.set(p.id,r)}for(const id of remotes.keys())if(!live.has(id))remotes.delete(id);
     if(software){renderer.setObjects(state.objects);return}
     for(const o of state.objects){const key=o.plot+'-'+o.slot,old=placed.get(key);if(old?.version===o.version)continue;if(old?.mesh)scene.remove(old.mesh);let mesh=null;
       if(o.kind!=='empty'&&templates[o.kind]){const plot=plots.find(p=>p.id===o.plot);if(!plot)continue;mesh=templates[o.kind].clone();const a=plot.angle,lx=(o.slot%3-1)*1.8,lz=(Math.floor(o.slot/3)-1)*1.7;mesh.position.set(plot.x+lx*Math.cos(a)+lz*Math.sin(a),.11,plot.z-lx*Math.sin(a)+lz*Math.cos(a));mesh.rotation.y=a+o.turn*Math.PI/2;scene.add(mesh)}placed.set(key,{version:o.version,mesh})}

@@ -36,12 +36,24 @@ const leftShoulder=ids.get('leftShoulder'),rightShoulder=ids.get('rightShoulder'
 const leftElbow=ids.get('leftElbow'),rightElbow=ids.get('rightElbow');
 const spine=ids.get('spine'),collar=ids.get('collar');
 
+const jumpBend=new Float32Array(joints.length);
+for(const side of ['left','right']){
+  jumpBend[ids.get(side+'Hip')]=.82;
+  jumpBend[ids.get(side+'Knee')]=-1.46;
+  jumpBend[ids.get(side+'Ankle')]=.37;
+  jumpBend[ids.get(side+'Shoulder')]=.77;
+  jumpBend[ids.get(side+'Elbow')]=.83;
+}
+jumpBend[spine]=-.15;
+jumpBend[collar]=.10;
+
 export function createRigPose() {
   return {points:joints.map(()=>({x:0,y:0,z:0})),angles:new Float32Array(joints.length)};
 }
 
-export function solveRig(pose,phase,gait) {
+export function solveRig(pose,phase,gait,airPose=0) {
   const {points,angles}=pose;
+  const tuck=Math.max(0,Math.min(1,airPose));
   const stride=Math.sin(phase)*gait;
   const breathe=Math.sin(phase*.5)*.012;
   for (let i=0;i<joints.length;i++){
@@ -64,6 +76,9 @@ export function solveRig(pose,phase,gait) {
     if(i===leftElbow||i===rightElbow)bend=.14+.15*gait;
     if(i===spine)bend=breathe-.07*gait;
     if(i===collar)bend=-breathe;
+    // Blend toward a bilateral gather: thighs swing forward, calves fold
+    // back, and both forearms lift. The walk returns as the feet land.
+    bend+=(jumpBend[i]-bend)*tuck;
     angles[i]=a+bend;
   }
   // The stance foot determines pelvis height even as the knee folds.
@@ -72,7 +87,7 @@ export function solveRig(pose,phase,gait) {
   return points;
 }
 
-export function advanceRig(state,id,moving,dt,solve=true){
+export function advanceRig(state,id,moving,dt,solve=true,airPose=0){
   if(!state) {
     let seed=0;
     for(const c of String(id))seed=(seed*31+c.charCodeAt(0))|0;
@@ -80,7 +95,8 @@ export function advanceRig(state,id,moving,dt,solve=true){
   }
   state.gait+=((moving?1:0)-state.gait)*(1-Math.exp(-12*dt));
   state.phase+=dt*(.9+8.3*state.gait);
-  if(solve)solveRig(state.pose,state.phase,state.gait);
+  state.airPose=Math.max(0,Math.min(1,airPose||0));
+  if(solve)solveRig(state.pose,state.phase,state.gait,state.airPose);
   return state;
 }
 
@@ -125,7 +141,7 @@ const period=(angle,n)=>((Math.round(angle*n/TAU)%n)+n)%n;
 // occlude in the correct order even at the rear and side of a subject.
 function subjectRaster(entry,view){
   const {model,posed,projected,colours}=entry;
-  const positions=deformSubject(model,view.phase,view.gait,posed);
+  const positions=deformSubject(model,view.phase,view.gait,posed,view.tuck);
   const cy=Math.cos(view.yaw),sy=Math.sin(view.yaw),cp=Math.cos(view.pitch),sp=Math.sin(view.pitch);
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
   for(let k=0;k<positions.length;k+=3){
@@ -232,19 +248,22 @@ export function createSubjectPainter(preview=false){
       if(performance.now()-start>=4)break;
     }
   }
-  function get(token,yaw,pitch,phase,gait,pixels=70,immediate=false){
+  function get(token,yaw,pitch,phase,gait,pixels=70,immediate=false,airPose=0){
     if(!isWholeSubject(token))return null;
     const e=subjects.get(token);
     if(e){e.seen=frame;if(!e.model)return null;}
     const yawCount=preview?96:24,phaseCount=preview?24:6;
-    const angle=period(yaw,yawCount),step=gait>.16?period(phase,phaseCount):0;
+    // Two air silhouettes per view replace the walking cycle while airborne.
+    // Vertical travel is projected separately and never becomes a cache key.
+    const tuck=airPose>.70?1:airPose>.16?.5:0;
+    const angle=period(yaw,yawCount),step=!tuck&&gait>.16?period(phase,phaseCount):0;
     const incline=Math.round(Math.max(-1.42,Math.min(1.42,pitch))/(Math.PI/24));
-    const effort=gait<.16?0:gait<.66?.55:1;
+    const effort=tuck||gait<.16?0:gait<.66?.55:1;
     const resolution=preview?224:pixels>85?104:pixels>32?64:32;
-    const key=[angle,incline,step,effort,resolution].join('/');
+    const key=[angle,incline,step,effort,tuck,resolution].join('/');
     let tile=e?.views.get(key);
     if(!tile){
-      const view={key,yaw:angle*TAU/yawCount,pitch:incline*Math.PI/24,phase:step*TAU/phaseCount,gait:effort,resolution};
+      const view={key,tuck,yaw:angle*TAU/yawCount,pitch:incline*Math.PI/24,phase:step*TAU/phaseCount,gait:effort,resolution};
       if(immediate||preview){tile=build(token,view);}
       else{
         // One queued job per subject avoids generating stale intermediate walk poses.
@@ -253,7 +272,7 @@ export function createSubjectPainter(preview=false){
         if(e)for(const candidate of e.views.values()){
           const v=candidate.view;
           const cost=4*(1-Math.cos(v.yaw-view.yaw))+Math.abs(v.pitch-view.pitch)+
-            .22*Math.abs(v.gait-view.gait)+.18*(1-Math.cos(v.phase-view.phase))*effort;
+            1.2*Math.abs(v.tuck-view.tuck)+.22*Math.abs(v.gait-view.gait)+.18*(1-Math.cos(v.phase-view.phase))*effort;
           if(cost<score){score=cost;tile=candidate;}
         }
       }

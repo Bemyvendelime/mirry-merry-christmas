@@ -3,6 +3,7 @@ export const visitors = sqliteTable("visitors", {
   id:text("id").primaryKey(), name:text("name").notNull(), color:text("color").notNull(),
   photo:text("photo").notNull().default(""), bio:text("bio").notNull().default(""),
   profileKey:text("profile_key").notNull().default(""),
+  jumpSeq:integer("jump_seq").notNull().default(0), jumpAt:integer("jump_at").notNull().default(0),
   x:real("x").notNull(), z:real("z").notNull(), yaw:real("yaw").notNull(), seen:integer("seen").notNull(),
 }, t=>[index("visitors_seen").on(t.seen)]);
 export const teams=sqliteTable("teams",{plot:text("plot").primaryKey(),keyhash:text("keyhash").notNull()});

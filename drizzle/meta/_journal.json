@@ -15,6 +15,13 @@
       "when": 1795434042396,
       "tag": "0001_joint_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795437924122,
+      "tag": "0002_avatar_jumps",
+      "breakpoints": true
     }
   ]
 }

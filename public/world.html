@@ -23,6 +23,7 @@
           <span class="drop-hint">또는 사진을 여기로 끌어오세요</span>
         </div>
         <div id="photoActions" hidden><button type="button" id="refineSubject">피사체 다시 선택</button><button type="button" id="addRegion">빠진 부분 추가</button><button type="button" id="removePhoto">사진 지우기</button></div>
+        <label id="bodyControl" hidden><input id="buildBody" type="checkbox"> 몸통·다리 생성</label>
         <output id="photoStatus" role="status"></output>
       </div>
       <div class="profile-fields">
@@ -52,11 +53,12 @@
         </label>
         <button id="help" type="button">도움말</button>
       </div>
-      <p class="control-hint"><span class="keyboard-hint">WASD / 방향키 이동 · 드래그 시점 · Tab 전환</span><span class="touch-hint">조이스틱 이동 · 드래그 시점</span></p>
+      <p class="control-hint"><span class="keyboard-hint">WASD / 방향키 이동 · Space 점프 · 드래그 시점 · Tab 전환</span><span class="touch-hint">조이스틱 이동 · 드래그 시점</span></p>
     </div>
   </div>
   <div id="notice" role="status"></div>
   <div class="lower"><button id="editNearby" hidden>부지 꾸미기</button></div>
+  <button id="jump" type="button">점프</button>
   <div id="stick" aria-label="이동 조이스틱"><i></i></div>
 </section>
 <dialog id="panel"><div class="dialogtop"><small>OSC · WINTER WORKSHOP</small><button id="close" aria-label="닫기">×</button></div><div id="contents"></div></dialog>

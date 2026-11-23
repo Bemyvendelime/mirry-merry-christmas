@@ -44,10 +44,11 @@ export function placeCamera(camera,target,player,mode,azimuth,tilt,eye,dt,snap){
   const arm=snap||horizontal<=prior?horizontal:prior+(horizontal-prior)*k;
   camera.userData.armLength=arm;
   const y=fp?eye:Math.max(.25,focus+slope*arm/horizon);
-  camera.position.set(player.x+sin*arm,y,player.z+cos*arm);
+  const lift=(player.y||0)*(fp?1:.42);
+  camera.position.set(player.x+sin*arm,y+lift,player.z+cos*arm);
   if(!fp && y>.251){
     const framing=mode==='rear'?.19*arm:0;
-    target.set(player.x,focus+framing,player.z);
+    target.set(player.x,focus+framing+lift,player.z);
   }else{
     target.set(camera.position.x-sin*horizon,camera.position.y-slope,camera.position.z-cos*horizon);
   }

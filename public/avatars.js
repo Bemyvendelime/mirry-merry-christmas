@@ -56,7 +56,7 @@ export function createAvatars(scene) {
     batch.setMatrixAt(batch.count++,matrix);
   }
   function drawDefault(p,state){
-    root.position.set(p.x,0,p.z);root.rotation.y=p.yaw||0;root.updateMatrix();
+    root.position.set(p.x,p.y||0,p.z);root.rotation.y=p.yaw||0;root.updateMatrix();
     const points=state.pose.points;
     for(let i=0;i<joints.length;i++){
       const joint=joints[i],end=points[i],start=points[joint.parent];
@@ -94,15 +94,15 @@ export function createAvatars(scene) {
         }
       }
       const bare=!custom||Boolean(actor&&!actor.skin);
-      const state=advanceRig(states.get(p.id),p.id,p.moving,Math.min(.1,Math.max(0,dt)),bare);
+      const state=advanceRig(states.get(p.id),p.id,p.moving,Math.min(.1,Math.max(0,dt)),bare,p.airPose);
       states.set(p.id,state);state.generation=generation;
       if(actor?.skin){
         const {mesh}=actor.skin;
         mesh.visible=!(hideSelf&&p.id===origin.id);
-        mesh.position.set(p.x,0,p.z);
+        mesh.position.set(p.x,p.y||0,p.z);
         // Subject input faces +Z. Walking yaw 0 faces the world's -Z.
         mesh.rotation.y=(p.yaw||0)+Math.PI;
-        actor.skin.update(state.phase,state.gait);
+        actor.skin.update(state.phase,state.gait,state.airPose);
       }else if(bare&&!(hideSelf&&p.id===origin.id)){
         drawDefault(p,state);
       }

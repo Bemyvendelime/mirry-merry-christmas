@@ -32,3 +32,6 @@
 #pickPoint:focus-visible i{display:block}
 #photoActions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:5px;margin-top:5px}
 #photoActions button{background:none;border:0;padding:5px 0;color:#634b39;text-decoration:underline;font:inherit;font-size:14px}
+
+#bodyControl {display:flex;align-items:center;gap:.38rem;width:fit-content;margin-top:.4rem;color:#534335;font-size:14px;cursor:pointer}
+#bodyControl input {width:16px;height:16px;margin:0}

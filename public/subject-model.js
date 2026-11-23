@@ -245,14 +245,14 @@ function makeSkeleton(rig){
 // bones. The source character faces -Z, while the uploaded subject faces +Z.
 let sourceIndices,neutral;
 const boneMotion=new WeakMap();
-function poseRig(skeleton,rig,phase,gait){
+function poseRig(skeleton,rig,phase,gait,airPose=0){
   if(!sourceIndices){
     sourceIndices=new Map(joints.map((j,i)=>[j.name,i]));
     neutral=createRigPose();solveRig(neutral,0,0);
   }
   let motion=boneMotion.get(skeleton);
   if(!motion){motion=createRigPose();boneMotion.set(skeleton,motion);}
-  solveRig(motion,gait?phase:0,gait);
+  solveRig(motion,gait?phase:0,gait,airPose);
   const {bones,byName}=rig,target=skeleton.bones,root=target[0];
   const scale=rig.height/1.8;
   const side=(motion.points[0].x-neutral.points[0].x)*scale;
@@ -272,7 +272,7 @@ function poseRig(skeleton,rig,phase,gait){
   if(rig.kind==='object'){
     // A rigid prop retains its silhouette. The walking body's pelvis sway
     // drives gentle whole-object motion with progressively softer follow.
-    const lean=(bend('leftHip')-bend('rightHip'))*.083;
+    const lean=(bend('leftHip')-bend('rightHip'))*.083+.10*airPose;
     root.rotation.z=lean;
     target[1].rotation.z=-lean*.72;
     target[2].rotation.z=-lean*.44;
@@ -289,6 +289,7 @@ function poseRig(skeleton,rig,phase,gait){
   for(const side of ['left','right']){
     transfer(side+'Thigh',side+'Hip');
     transfer(side+'Shin',side+'Knee');
+    transfer(side+'Foot',side+'Ankle');
     transfer(side+'Arm',side+'Shoulder');
     transfer(side+'Forearm',side+'Elbow');
   }
@@ -298,17 +299,17 @@ export function createSubjectSkin(model){
   const skeleton=makeSkeleton(model.rig),mesh=new T.SkinnedMesh(model.geometry,material);
   mesh.add(skeleton.bones[0]);mesh.bind(skeleton);
   mesh.frustumCulled=false;
-  return {mesh,update(phase,gait){poseRig(skeleton,model.rig,phase,gait);},dispose(){skeleton.dispose();}};
+  return {mesh,update(phase,gait,airPose=0){poseRig(skeleton,model.rig,phase,gait,airPose);},dispose(){skeleton.dispose();}};
 }
 
 const cpuRigs=new WeakMap();
-export function deformSubject(model,phase,gait,out){
+export function deformSubject(model,phase,gait,out,airPose=0){
   const geometry=model.geometry,position=geometry.attributes.position.array;
   const result=out||new Float32Array(position.length);
-  if(!gait){result.set(position);return result;}
+  if(!gait&&!airPose){result.set(position);return result;}
   let skeleton=cpuRigs.get(model);
   if(!skeleton){skeleton=makeSkeleton(model.rig);cpuRigs.set(model,skeleton);}
-  poseRig(skeleton,model.rig,phase,gait);
+  poseRig(skeleton,model.rig,phase,gait,airPose);
   skeleton.bones[0].updateMatrixWorld(true);skeleton.update();
   const matrices=skeleton.boneMatrices,weights=geometry.attributes.skinWeight.array,ids=geometry.attributes.skinIndex.array;
   for(let i=0,w=0;i<position.length;i+=3,w+=4){
