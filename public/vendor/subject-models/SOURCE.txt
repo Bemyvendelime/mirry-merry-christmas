@@ -1,0 +1,17 @@
+TensorFlow.js TFLite Wasm runtime (Apache-2.0), @tensorflow/tfjs-tflite 0.0.1-alpha.10, no changes.
+https://github.com/tensorflow/tfjs/tree/master/tfjs-tflite
+https://registry.npmjs.org/@tensorflow/tfjs-tflite/-/tfjs-tflite-0.0.1-alpha.10.tgz
+
+MediaPipe / Google pretrained models (Apache-2.0), original model bytes:
+magic_touch.tflite: https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite
+pose_detector.tflite and pose_landmarks_detector.tflite: extracted from https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
+MagicTouch model card: https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MagicTouch.pdf
+Pose model card: https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf
+Detector anchor and crop conventions: https://github.com/google-ai-edge/mediapipe/tree/master/mediapipe/tasks/cc/vision/pose_detector
+e24338a717c1b7ad8d159666677ef400babb7f33b8ad60c4d96db4ecf694cd25  magic_touch.tflite
+46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9  pose_detector.tflite
+ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58  pose_landmarks_detector.tflite
+f1eb42f96ae91e5ef34e2f833f011373ca1c40fdc9d4062ec21eb07b886ea54f  tflite_web_api_cc.wasm
+40f49cc2d458ec09bb43db160e9e55f4b3c790a4c1d1fa280f8a61796296cf8e  tflite_web_api_cc_simd.wasm
+08e963fcde11dc041feeac97ff711b3a157614edc98ff8bfa309557189b7368d  tflite_web_api_cc.js
+d5c71816525140d7a35b59a908d3b07d42741576630e647d246c19c6fa72d63d  tflite_web_api_cc_simd.js

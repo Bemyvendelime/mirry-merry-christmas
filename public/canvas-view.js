@@ -1,5 +1,5 @@
 import * as T from 'three';
-import {advanceRig,paintRig} from './joint-rig.js';
+import {advanceRig,paintRig,isWholeSubject,createSubjectPainter} from './joint-rig.js';
 import {plots} from './layout.js';
 import {paintFirSplats,paintPixelPalette} from './software-pixelart.js';
 import {createLandscape} from './software-landscape.js';
@@ -50,18 +50,19 @@ export function createCanvasView(root) {
   for(let n=0;n<2;n++){const c=make(145,70),q=c.getContext('2d');q.fillStyle='#969ca9';q.beginPath();q.moveTo(4,51);q.quadraticCurveTo(24,28,66,30);q.quadraticCurveTo(132,28,142,52);q.quadraticCurveTo(77,63,4,58);q.fill();const d=q.createLinearGradient(0,21,0,54);d.addColorStop(0,'#e7e9ed');d.addColorStop(.5,'#d4dce6');d.addColorStop(1,'#aab7c8');q.fillStyle=d;q.beginPath();q.moveTo(2,54);q.bezierCurveTo(14,47,23,30,43,28);q.bezierCurveTo(81,18,125,25,142,50);q.quadraticCurveTo(74,61,2,54);q.fill();textures.set('ridge'+n,c);}
   for(const s of [-1,1])for(let i=0;i<57;i++){const a=i/57*tau,rad=rnd()*.47;props.push({x:s*25+(12.8+rad)*Math.cos(a),z:-8+(16.7+rad)*Math.sin(a),h:.20+rnd()*.27,w:.5+rnd()*1.1,k:'ridge'+i%2});}
   const motes=Array.from({length:110},()=>({x:rnd()*90-45,z:rnd()*85-42,y:rnd()*12,s:rnd()}));
-  const rigStates=new Map();
+  const rigStates=new Map(), subjects=createSubjectPainter();
   let previousPoseTime=performance.now(),poseFrame=0;
   function decor(k){const b=make(100,130),c=b.getContext('2d');if(k==='pine'){c.fillStyle='#726253';c.fillRect(45,105,10,25);for(let j=0;j<4;j++)poly(c,[[50,8+j*17],[50-(19+j*8),49+j*22],[50+(19+j*8),49+j*22]],j%2?'#415b4d':'#526e5a');}else if(k==='snowman'){for(const [y,r] of [[101,28],[65,23],[33,17]]){c.beginPath();c.arc(50,y,r,0,tau);c.fillStyle='#e9edf3';c.fill();c.strokeStyle='#acb7c7';c.stroke();}c.fillStyle='#47404b';c.fillRect(34,15,32,4);c.fillRect(41,1,18,16);c.fillRect(44,30,3,3);c.fillRect(55,30,3,3);c.fillStyle='#9a4d50';c.fillRect(33,47,35,5);}else if(k==='bench'){c.fillStyle='#69534c';c.fillRect(8,61,84,11);c.fillRect(8,76,84,8);c.fillRect(8,94,84,10);c.fillStyle='#494852';c.fillRect(16,65,6,61);c.fillRect(78,65,6,61);}return b;}
   for(const k of ['pine','bench','snowman'])textures.set(k,decor(k));
-  return {scene,domElement:canvas,setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520/W,330/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list){actors=list||[];},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
+  return {scene,domElement:canvas,dispose(){loop=null;cancelAnimationFrame(raf);rigStates.clear();subjects.dispose();},setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520/W,330/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list){actors=list||[];},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
     camera.updateMatrixWorld();const m=camera.matrixWorld.elements,pr=camera.projectionMatrix.elements,f=pr[5];drawLandscape(ctx,m,pr,W,H,style);
     const draw=props.slice();const treeDistance=Math.hypot(m[12],m[14]);const closeFoliage=Math.max(0,Math.min(1,(22-treeDistance)/12));if(style!=='gaussian-pixelart'&&closeFoliage&&detailed.has('tree'))draw.push(...crownBranches);
     const now=performance.now(),poseDt=Math.min(.1,(now-previousPoseTime)/1000);previousPoseTime=now;poseFrame++;
+    subjects.beginFrame();
     for(const [idx,actor] of actors.entries()){
-      const state=advanceRig(rigStates.get(actor.id),actor.id,actor.moving,poseDt);
+      const state=advanceRig(rigStates.get(actor.id),actor.id,actor.moving,poseDt,!isWholeSubject(actor.photo));
       rigStates.set(actor.id,state);state.frame=poseFrame;
-      draw.push({x:actor.x,z:actor.z,h:2.06,w:.82,actor,pose:state.pose,label:idx?actor.name:''});
+      draw.push({x:actor.x,z:actor.z,h:2.06,w:isWholeSubject(actor.photo)?2.4:.82,actor,state,local:idx===0,label:idx?actor.name:''});
     }
     for(const [id,state] of rigStates)if(state.frame!==poseFrame)rigStates.delete(id);
     for(const obj of objects){if(obj.kind==='empty')continue;const p=plots.find(q=>q.id===obj.plot);if(!p)continue;const lx=(obj.slot%3-1)*1.8,lz=(Math.floor(obj.slot/3)-1)*1.7;draw.push({x:p.x+lx*Math.cos(p.angle)+lz*Math.sin(p.angle),z:p.z-lx*Math.sin(p.angle)+lz*Math.cos(p.angle),h:obj.kind==='bench'?1.4:2,w:obj.kind==='bench'?1.9:1.3,k:obj.kind==='light'?'lamp':obj.kind});}
@@ -125,12 +126,20 @@ export function createCanvasView(root) {
       if(!shrub&&!ridge){const shadow=Math.max(1,Math.min(ww*.40,H/base.d*.30)),height=Math.max(1,Math.min(shadow*.36,12));ctx.save();ctx.translate(base.x,base.y+1);ctx.scale(shadow,height);const fog=ctx.createRadialGradient(0,0,0,0,0,1);fog.addColorStop(0,'rgba(43,47,67,.34)');fog.addColorStop(1,'rgba(43,47,67,0)');ctx.fillStyle=fog;ctx.fillRect(-1,-1,2,2);ctx.restore();}
       if(o.actor){
         const actor=o.actor,angle=actor.yaw||0,cos=Math.cos(angle),sin=Math.sin(angle);
-        const relative=angle-Math.atan2(m[12]-o.x,m[14]-o.z);
-        paintRig(ctx,o.pose,(x,y,z)=>{
-          const pt=project(o.x+x*cos+z*sin,y,o.z-x*sin+z*cos);
-          if(pt)pt.scale=H*f*.5/pt.d;
-          return pt;
-        },actor.photo,relative);
+        if(isWholeSubject(actor.photo)){
+          const dx=m[12]-o.x,dz=m[14]-o.z,distance=Math.hypot(dx,dz);
+          const facing=angle+Math.PI-Math.atan2(dx,dz);
+          const pitch=Math.atan2(m[13]-.9,Math.max(.01,distance));
+          const scale=H*f*.5/base.d;
+          const tile=subjects.get(actor.photo,facing,pitch,o.state.phase,o.state.gait,tall,o.local);
+          if(tile)ctx.drawImage(tile.canvas,base.x+tile.left*scale,base.y-tile.top*scale,tile.width*scale,tile.height*scale);
+        }else{
+          paintRig(ctx,o.state.pose,(x,y,z)=>{
+            const pt=project(o.x+x*cos+z*sin,y,o.z-x*sin+z*cos);
+            if(pt)pt.scale=H*f*.5/pt.d;
+            return pt;
+          });
+        }
       }else ctx.drawImage(tex,left,top.y,ww,tall);
       if(isLamp&&detailed.has('lamp')&&(o.k==='lampA'||o.k==='lampB')){const a=o.k==='lampA',bw=tall*.117,bh=tall*.198,bx=left+ww*.76-bw,by=top.y+tall*.48;ctx.lineWidth=Math.max(1,tall*.008);ctx.strokeStyle='#6e5c49';ctx.beginPath();ctx.moveTo(bx-ww*.04,by);ctx.lineTo(bx+bw+ww*.06,by);ctx.stroke();poly(ctx,[[bx,by],[bx+bw,by],[bx+bw*.98,by+bh],[bx+bw*.5,by+bh*.88],[bx,by+bh]],a?'#935843':'#445575');ctx.fillStyle='#eee6d0';ctx.font=`${Math.round(tall*.085)}px Georgia`;ctx.textAlign='center';ctx.fillText(a?'A':'B',bx+bw*.5,by+bh*.65);}
       if(o.label&&base.d<20){ctx.font='600 12px system-ui';ctx.textAlign='center';const lw=ctx.measureText(o.label).width+12;ctx.fillStyle='#343545aa';ctx.fillRect(base.x-lw/2,top.y-16,lw,16);ctx.fillStyle='#fff5e2';ctx.fillText(o.label,base.x,top.y-4);}}

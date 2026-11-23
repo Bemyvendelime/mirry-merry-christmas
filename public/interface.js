@@ -25,20 +25,90 @@ $('back').onclick=()=>{
   $('profile').hidden=true;$('welcome').hidden=false;
   preview?.dispose();preview=null;$('openProfile').focus();
 };
-async function choosePhoto(file){
+let sourceFile=null,sourceURL='',working=Promise.resolve();
+let pointer={x:.5,y:.5},selectedSubject=null,adding=false;
+function picker(open){
+  $('subjectPicker').hidden=!open;
+  $('rigPreview').hidden=open;
+  $('refineSubject').hidden=open;
+  $('addRegion').hidden=open||!selectedSubject;
+  if(open){
+    $('pickPoint').style.setProperty('--px',pointer.x*100+'%');
+    $('pickPoint').style.setProperty('--py',pointer.y*100+'%');
+  }
+}
+function resetSource(){
+  sourceFile=null;
+  if(sourceURL)URL.revokeObjectURL(sourceURL);
+  sourceURL='';$('sourcePhoto').removeAttribute('src');$('photoActions').hidden=true;
+  selectedSubject=null;adding=false;profilePhoto='';preview?.setPhoto('');picker(false);
+}
+// Each extraction reports bounds in original-photo coordinates, so a second
+// tap can restore disconnected details (e.g. a lantern hanging from its post).
+function combineRegions(first,extra){
+  const a=first.bounds,b=extra.bounds,x=Math.min(a.x,b.x),y=Math.min(a.y,b.y);
+  const width=Math.max(a.x+a.width,b.x+b.width)-x,height=Math.max(a.y+a.height,b.y+b.height)-y;
+  const scale=first.canvas.width/a.width;
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+  const ctx=canvas.getContext('2d');
+  for(const part of [extra,first]){
+    const r=part.bounds;
+    ctx.drawImage(part.canvas,(r.x-x)/width*canvas.width,(r.y-y)/height*canvas.height,r.width/width*canvas.width,r.height/height*canvas.height);
+  }
+  const fitted=first.landmarks?first:extra;
+  const landmarks=fitted.landmarks?.map(l=>({...l,x:(l.x*fitted.bounds.width+fitted.bounds.x-x)/width,y:(l.y*fitted.bounds.height+fitted.bounds.y-y)/height}))??null;
+  return {...first,canvas,bounds:{x,y,width,height},landmarks};
+}
+async function choosePhoto(file,hint=null){
   if(!file||joining)return;
   const seq=++photoRequest;
-  converting=true;$('enter').disabled=true;$('photoStatus').textContent='사진을 3D로 바꾸고 있어요…';
-  try{
-    const {photoToModel}=await import('./photo-mesh.js');
-    const model=await photoToModel(file);
+  if(sourceFile!==file){
+    resetSource();sourceFile=file;sourceURL=URL.createObjectURL(file);
+    $('sourcePhoto').src=sourceURL;pointer={x:.5,y:.5};
+  }
+  converting=true;$('enter').disabled=true;
+  $('photoActions').hidden=false;$('refineSubject').disabled=true;$('addRegion').disabled=true;
+  $('photoStatus').textContent='사진에서 피사체를 찾고 있어요…';
+  const progress=text=>{if(seq===photoRequest)$('photoStatus').textContent=text;};
+  const run=async()=>{
     if(seq!==photoRequest)return;
-    profilePhoto=model;
+    const [{extractSubject},{encodeSubject}]=await Promise.all([import('./subject-extract.js'),import('./subject-codec.js')]);
+    const extracted=await extractSubject(file,hint,progress);
+    if(seq!==photoRequest)return;
+    const subject=adding&&selectedSubject?combineRegions(selectedSubject,extracted):extracted;
+    const model=encodeSubject(subject);
+    adding=false;selectedSubject=subject;profilePhoto=model;picker(false);
     await startPreview();
-    $('photoStatus').textContent='사진을 캐릭터에 붙였어요.';
-  }catch(e){if(seq===photoRequest){profilePhoto='';preview?.setPhoto('');$('photoStatus').textContent=e.message||'사진을 읽지 못했어요. 다른 사진을 선택해 주세요.';}}
-  finally{if(seq===photoRequest){converting=false;$('enter').disabled=joining;}}
+    if(seq!==photoRequest)return;
+    $('photoStatus').textContent='움직이는 피사체를 확인해 주세요.';
+  };
+  working=working.catch(()=>{}).then(run);
+  try{await working;}
+  catch(e){if(seq===photoRequest){
+    if(!selectedSubject){profilePhoto='';preview?.setPhoto('');}
+    picker(!!$('sourcePhoto').naturalWidth);
+    $('photoStatus').textContent=(e.message||'피사체를 찾지 못했어요.')+($('subjectPicker').hidden?'':' 원본에서 사용할 대상을 눌러 주세요.');
+  }}
+  finally{if(seq===photoRequest){converting=false;$('refineSubject').disabled=false;$('addRegion').disabled=false;$('enter').disabled=joining||!profilePhoto;}}
 }
+$('addRegion').onclick=()=>{adding=true;picker(true);$('pickPoint').focus();$('photoStatus').textContent='빠진 부분을 원본 사진에서 눌러 주세요.';};
+$('refineSubject').onclick=()=>{adding=false;picker(true);$('pickPoint').focus();$('photoStatus').textContent='원본 사진에서 움직일 사람이나 사물을 눌러 주세요.';};
+$('pickPoint').onkeydown=e=>{
+  const shift={ArrowLeft:[-.04,0],ArrowRight:[.04,0],ArrowDown:[0,.04],ArrowUp:[0,-.04]}[e.key];
+  if(!shift)return;
+  e.preventDefault();pointer={x:Math.max(0,Math.min(1,pointer.x+shift[0])),y:Math.max(0,Math.min(1,pointer.y+shift[1]))};picker(true);
+};
+$('pickPoint').onclick=e=>{
+  if(converting)return;
+  const rect=$('sourcePhoto').getBoundingClientRect();
+  if(e.detail&&rect.width&&rect.height)pointer={x:Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height))};
+  picker(true);choosePhoto(sourceFile,pointer);
+};
+$('removePhoto').onclick=()=>{
+  if(joining)return;
+  ++photoRequest;resetSource();converting=false;$('enter').disabled=false;$('photoStatus').textContent='';
+};
 $('portrait').onchange=e=>{const file=e.target.files[0];e.target.value='';choosePhoto(file)};
 const drop=$('drop');
 for(const type of ['dragenter','dragover'])drop.addEventListener(type,e=>{e.preventDefault();drop.classList.add('drag')});
@@ -71,7 +141,7 @@ async function sync(){let wait=900;try{const {x,z,yaw}=world.player;state=await 
 $('join').onsubmit=async e=>{
   e.preventDefault();
   const name=$('name').value.trim(),bio=$('bio').value.trim();
-  if(!name||converting||joining)return;
+  if(!name||converting||joining||(sourceFile&&!profilePhoto))return;
   joining=true;$('enter').disabled=true;$('back').disabled=true;$('portrait').disabled=true;
   $('joinStatus').textContent='광장을 열고 있어요…';
   try{

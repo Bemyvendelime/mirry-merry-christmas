@@ -24,3 +24,11 @@
 @media(max-aspect-ratio:4/5){.card-title{left:7%;top:6%;width:67%}.card-art img{object-position:center}#openProfile{bottom:max(6.5%,env(safe-area-inset-bottom));right:8%}}
 @media(max-width:520px){#join{padding:24px 18px;width:calc(100% - 28px)}.profile-grid{gap:15px;grid-template-columns:minmax(0,.92fr) minmax(0,1fr)}.profile-fields{gap:5px}.profile-fields textarea{min-height:78px}.drop-hint{font-size:12px}#join .stamp-button{padding:10px 3px}#openProfile{min-width:88px}}
 @media(max-width:345px){.profile-grid{grid-template-columns:1fr}#rigPreview{height:90px}}
+
+#subjectPicker{min-height:120px;display:grid;place-items:center;width:100%;background:#1a2936}
+#pickPoint{display:block;position:relative;width:fit-content;max-width:100%;padding:0;border:0;background:none;cursor:crosshair;line-height:0}
+#sourcePhoto{display:block;max-width:100%;max-height:205px;width:auto;height:auto}
+#pickPoint i{display:none;pointer-events:none;position:absolute;left:var(--px,50%);top:var(--py,50%);transform:translate(-50%,-50%);width:14px;height:14px;border:2px solid #fff7d2;border-radius:50%;box-shadow:0 0 0 2px #573e2b}
+#pickPoint:focus-visible i{display:block}
+#photoActions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:5px;margin-top:5px}
+#photoActions button{background:none;border:0;padding:5px 0;color:#634b39;text-decoration:underline;font:inherit;font-size:14px}

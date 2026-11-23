@@ -15,10 +15,14 @@
     <div class="profile-grid">
       <div class="model-side">
         <div id="drop" class="drop-area">
-          <canvas id="rigPreview" width="256" height="272" aria-label="관절 캐릭터 미리보기"></canvas>
+          <canvas id="rigPreview" width="256" height="272" aria-label="움직이는 3D 캐릭터 미리보기"></canvas>
+          <div id="subjectPicker" hidden>
+            <button type="button" id="pickPoint" aria-label="원본 사진에서 사용할 피사체 선택. 방향키로 위치를 조정하고 Enter로 선택하세요."><img id="sourcePhoto" alt="업로드한 원본 사진"><i aria-hidden="true"></i></button>
+          </div>
           <label class="file-select" for="portrait">사진 선택<input id="portrait" type="file" accept="image/*"></label>
           <span class="drop-hint">또는 사진을 여기로 끌어오세요</span>
         </div>
+        <div id="photoActions" hidden><button type="button" id="refineSubject">피사체 다시 선택</button><button type="button" id="addRegion">빠진 부분 추가</button><button type="button" id="removePhoto">사진 지우기</button></div>
         <output id="photoStatus" role="status"></output>
       </div>
       <div class="profile-fields">
