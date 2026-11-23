@@ -13,3 +13,45 @@
 .native-links{display:flex;gap:15px;flex-wrap:wrap}
 @media(max-width:680px){.glass .view-field{margin:0 0 10px}.introwrap{max-height:82dvh;overflow:auto}.glass{margin-top:12px}.view-choices{margin-top:3px}}
 @media(max-height:550px){.introwrap{max-height:96dvh;overflow:auto;bottom:2vh}.glass{padding:12px}.glass .view-field{margin-bottom:6px}}
+
+.gamehead {
+  top:max(12px,env(safe-area-inset-top));
+  left:max(14px,env(safe-area-inset-left));
+  right:max(14px,env(safe-area-inset-right));
+  gap:8px;
+}
+.minimap-button {
+  display:block; flex:none; width:clamp(88px,11vw,130px); aspect-ratio:1; padding:0;
+  overflow:hidden; border:1px solid #e9d8bbaa; border-radius:50%;
+  background:#1a2836d6; box-shadow:0 2px 9px #10182745;
+}
+.minimap-button canvas {display:block;width:100%;height:100%}
+.hud-tools {display:grid;justify-items:end;gap:4px;min-width:0}
+.actions {justify-content:flex-end;flex-wrap:wrap}
+.actions #presence,.actions #help,.actions .camera-choice {
+  background:rgb(25 38 57 / 50%);color:#fff9ec;
+  border:1px solid #e3d8b955;border-radius:8px;backdrop-filter:blur(4px);
+  text-shadow:0 1px 3px #102036;font-size:14px;line-height:1.4;
+}
+.actions #presence,.actions #help {padding:8px 10px}
+.actions .camera-choice {position:relative;display:flex;pointer-events:auto}
+.camera-choice::after {
+  content:'';position:absolute;right:11px;top:43%;width:5px;height:5px;
+  border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);pointer-events:none;
+}
+.camera-choice select {
+  appearance:none;cursor:pointer;width:100%;border:0;border-radius:8px;background:transparent;
+  color:inherit;text-shadow:inherit;font:inherit;padding:8px 26px 8px 10px;
+}
+.camera-choice option {color:#fff9ec;background:#192639}
+.actions .sr {padding:0;border:0}
+.control-hint {margin:0 1px 0 0;color:#fff8e7;font:500 12px/1.4 system-ui;text-shadow:0 1px 3px #101827,0 0 4px #101827}
+.touch-hint {display:none}
+@media(pointer:coarse){.touch-hint{display:inline}.keyboard-hint{display:none}}
+@media(max-width:600px){
+  .gamehead{left:max(9px,env(safe-area-inset-left));right:max(9px,env(safe-area-inset-right))}
+  .actions{gap:4px}
+  .actions #presence,.actions #help,.actions .camera-choice{font-size:13px}
+  .actions #presence,.actions #help{padding:8px}
+  .control-hint{font-size:11px}
+}

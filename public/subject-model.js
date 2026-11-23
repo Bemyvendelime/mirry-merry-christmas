@@ -3,6 +3,7 @@
 // its contour. This infers unseen depth, without a rectangular back plate.
 import * as T from './vendor/three.js';
 import {decodeSubject} from './subject-codec.js';
+import {createRearSurface} from './subject-back.js';
 import {createRigPose,solveRig,joints} from './joint-rig.js';
 
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
@@ -152,18 +153,22 @@ export function createSubjectModel(token,{level='high'}={}){
   let maxAlpha=0;for(let i=3;i<rgba.length;i+=4)maxAlpha=Math.max(maxAlpha,rgba[i]);
   const cut=Math.max(1,Math.min(96,Math.round(maxAlpha*.5)));
   const depth=depthField(grid,cut);
+  const rearSurface=createRearSurface(image,rig.kind!=='object');
   const corners=new Map(),edges=new Map(),positions=[],colors=[],skinIds=[],skinW=[],tris=[];
   function vertex(gx,gy,r,g,b,thickness){
     const x=((gx-.5)/w-.5)*width,y=(1-(gy-.5)/h)*height;
     const assignment=boneWeights(rig,x,y);
     const front=positions.length/3;
-    function push(z){
+    function push(z,red,green,blue){
       positions.push(x,y,z+assignment.z);
-      colors.push(colourTable[r],colourTable[g],colourTable[b]);
+      colors.push(colourTable[red],colourTable[green],colourTable[blue]);
       skinIds.push(...assignment.ids);skinW.push(...assignment.weights);
     }
-    push(thickness);
-    if(thickness>0)push(-thickness);
+    push(thickness,r,g,b);
+    if(thickness>0){
+      const rear=rearSurface((gx-.5)/w,(gy-.5)/h,[r,g,b]);
+      push(-thickness*rear.rearDepth,...rear.rgb);
+    }
     return {front,back:thickness>0?front+1:front};
   }
   function corner(i){

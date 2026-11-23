@@ -71,7 +71,7 @@ export function createAvatars(scene) {
     }
   }
   let generation=0;
-  function render(players,dt=.016) {
+  function render(players,dt=.016,hideSelf=false) {
     generation++;nodes.count=rods.count=0;
     const origin=players[0];
     const visible=players.slice(0,CAPACITY).map((player,i)=>({
@@ -98,11 +98,12 @@ export function createAvatars(scene) {
       states.set(p.id,state);state.generation=generation;
       if(actor?.skin){
         const {mesh}=actor.skin;
+        mesh.visible=!(hideSelf&&p.id===origin.id);
         mesh.position.set(p.x,0,p.z);
         // Subject input faces +Z. Walking yaw 0 faces the world's -Z.
         mesh.rotation.y=(p.yaw||0)+Math.PI;
         actor.skin.update(state.phase,state.gait);
-      }else if(bare){
+      }else if(bare&&!(hideSelf&&p.id===origin.id)){
         drawDefault(p,state);
       }
     }

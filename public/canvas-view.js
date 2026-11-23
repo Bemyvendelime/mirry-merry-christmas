@@ -9,7 +9,7 @@ import {createLandscape} from './software-landscape.js';
 export function createCanvasView(root) {
   const make=(w,h=w)=>Object.assign(document.createElement('canvas'),{width:w,height:h});
   const canvas=make(8), ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true}), scene=new T.Scene();
-  root.replaceChildren(canvas);let style='raytracing',viewW=8,viewH=8,W=8,H=8,actors=[],objects=[],loop=null,raf=0;
+  root.replaceChildren(canvas);let style='raytracing',viewW=8,viewH=8,W=8,H=8,hideSelf=false,actors=[],objects=[],loop=null,raf=0;
   let seed=49285;const rnd=()=>((seed=Math.imul(1664525,seed)+1013904223>>>0)/4294967296),tau=Math.PI*2;
   const textures=new Map(),props=[], pi=Math.PI;
   const treeRect=make(390,630),tree=treeRect.getContext('2d');
@@ -54,7 +54,7 @@ export function createCanvasView(root) {
   let previousPoseTime=performance.now(),poseFrame=0;
   function decor(k){const b=make(100,130),c=b.getContext('2d');if(k==='pine'){c.fillStyle='#726253';c.fillRect(45,105,10,25);for(let j=0;j<4;j++)poly(c,[[50,8+j*17],[50-(19+j*8),49+j*22],[50+(19+j*8),49+j*22]],j%2?'#415b4d':'#526e5a');}else if(k==='snowman'){for(const [y,r] of [[101,28],[65,23],[33,17]]){c.beginPath();c.arc(50,y,r,0,tau);c.fillStyle='#e9edf3';c.fill();c.strokeStyle='#acb7c7';c.stroke();}c.fillStyle='#47404b';c.fillRect(34,15,32,4);c.fillRect(41,1,18,16);c.fillRect(44,30,3,3);c.fillRect(55,30,3,3);c.fillStyle='#9a4d50';c.fillRect(33,47,35,5);}else if(k==='bench'){c.fillStyle='#69534c';c.fillRect(8,61,84,11);c.fillRect(8,76,84,8);c.fillRect(8,94,84,10);c.fillStyle='#494852';c.fillRect(16,65,6,61);c.fillRect(78,65,6,61);}return b;}
   for(const k of ['pine','bench','snowman'])textures.set(k,decor(k));
-  return {scene,domElement:canvas,dispose(){loop=null;cancelAnimationFrame(raf);rigStates.clear();subjects.dispose();},setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520/W,330/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list){actors=list||[];},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
+  return {scene,domElement:canvas,dispose(){loop=null;cancelAnimationFrame(raf);rigStates.clear();subjects.dispose();},setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520/W,330/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list,hideLocal=false){actors=list||[];hideSelf=hideLocal;},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
     camera.updateMatrixWorld();const m=camera.matrixWorld.elements,pr=camera.projectionMatrix.elements,f=pr[5];drawLandscape(ctx,m,pr,W,H,style);
     const draw=props.slice();const treeDistance=Math.hypot(m[12],m[14]);const closeFoliage=Math.max(0,Math.min(1,(22-treeDistance)/12));if(style!=='gaussian-pixelart'&&closeFoliage&&detailed.has('tree'))draw.push(...crownBranches);
     const now=performance.now(),poseDt=Math.min(.1,(now-previousPoseTime)/1000);previousPoseTime=now;poseFrame++;
@@ -62,6 +62,7 @@ export function createCanvasView(root) {
     for(const [idx,actor] of actors.entries()){
       const state=advanceRig(rigStates.get(actor.id),actor.id,actor.moving,poseDt,!isWholeSubject(actor.photo));
       rigStates.set(actor.id,state);state.frame=poseFrame;
+      if(hideSelf&&idx===0)continue;
       draw.push({x:actor.x,z:actor.z,h:2.06,w:isWholeSubject(actor.photo)?2.4:.82,actor,state,local:idx===0,label:idx?actor.name:''});
     }
     for(const [id,state] of rigStates)if(state.frame!==poseFrame)rigStates.delete(id);

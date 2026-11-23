@@ -34,7 +34,30 @@
     </div>
   </form>
 </section>
-<section id="hud" hidden><div class="gamehead"><div class="nameplate"><b>✴</b><div><small>OSC WINTER WORKSHOP</small><strong id="location">별빛광장</strong></div></div><div class="actions"><span id="presence">연결 중</span><button id="openmap">지도</button><button id="help">도움말</button></div></div>
-<div id="notice" role="status"></div><div class="lower"><span class="keys">W A S D · 이동　 /　 드래그 · 시점</span><button id="editNearby" hidden>부지 꾸미기</button></div><div id="stick" aria-label="이동 조이스틱"><i></i></div></section>
+<section id="hud" hidden aria-label="광장 조작">
+  <div class="gamehead">
+    <button id="openmap" class="minimap-button" type="button" aria-label="내 위치 미니맵 · 전체 지도 열기">
+      <canvas id="minimap" width="272" height="272" aria-hidden="true"></canvas>
+    </button>
+    <div class="hud-tools">
+      <div class="actions">
+        <span id="presence">연결 중</span>
+        <label class="camera-choice">
+          <span class="sr">카메라 시점</span>
+          <select id="cameraMode" aria-label="카메라 시점">
+            <option value="rear">후방 3인칭</option>
+            <option value="first">1인칭</option>
+            <option value="front">정면 3인칭</option>
+          </select>
+        </label>
+        <button id="help" type="button">도움말</button>
+      </div>
+      <p class="control-hint"><span class="keyboard-hint">WASD 이동 · 드래그 시점 · V 전환</span><span class="touch-hint">조이스틱 이동 · 드래그 시점</span></p>
+    </div>
+  </div>
+  <div id="notice" role="status"></div>
+  <div class="lower"><button id="editNearby" hidden>부지 꾸미기</button></div>
+  <div id="stick" aria-label="이동 조이스틱"><i></i></div>
+</section>
 <dialog id="panel"><div class="dialogtop"><small>OSC · WINTER WORKSHOP</small><button id="close" aria-label="닫기">×</button></div><div id="contents"></div></dialog>
 <script type="module" src="interface.js"></script></body></html>

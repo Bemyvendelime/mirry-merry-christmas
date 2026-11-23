@@ -1,4 +1,5 @@
 import {plots} from './layout.js';
+import {createMinimap} from './minimap.js';
 const $=id=>document.getElementById(id), panel=$('panel'), content=$('contents');
 const kinds={empty:'빈 칸',bench:'벤치',snowman:'눈사람',light:'조명',pine:'작은 전나무'};
 const saved=(k,f='')=>{try{return localStorage.getItem('osc-'+k)||f}catch{return f}};
@@ -117,9 +118,19 @@ drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag'
 async function api(action,fields={}){const res=await fetch('/api/world',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...fields}),signal:AbortSignal.timeout(10000)});const v=await res.json();if(!res.ok){const e=new Error(v.error||'요청을 처리하지 못했어요.');e.status=res.status;throw e}return v}
 function show(html){content.innerHTML=html;if(!panel.open)panel.showModal()}
 $('close').onclick=()=>panel.close();panel.addEventListener('click',e=>{if(e.target===panel){const b=panel.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)panel.close()}});
-function help(){show('<h2>광장 이용 안내</h2><p><b>컴퓨터</b><br>W A S D 또는 방향키로 걷고, 화면을 드래그하거나 Q · E로 시점을 돌려요. Shift를 누르면 빨리 걸어요.</p><p><b>모바일</b><br>왼쪽 조이스틱으로 걷고, 오른쪽 화면을 쓸어 시점을 돌려요.</p><p><b>팀 부지</b><br>벽돌 테두리 가까이 가면 꾸미기 버튼이 나타나요. 팀 편집 코드를 공유하면 팀원들이 같은 부지를 함께 꾸밀 수 있어요.</p><a href="/scene-assets/starlit-courtyard.blend" download>월드 블렌더 원본 받기</a><p><b>ThreeRT 네이티브 장면</b><br>하드웨어 레이트레이싱으로 광장을 둘러볼 수 있어요. 팀 부지 편집은 웹 광장에서 진행해요.</p><div class="native-links"><a href="threerts://osc-starlit-courtyard.bentivoglio0806.chatgpt.site/scene-assets/threert/" target="_blank" rel="noopener">ThreeRT 앱에서 열기</a><a href="/scene-assets/starlit-threert.zip" download>장면 파일 받기</a></div>')}
+function help(){show('<h2>광장 이용 안내</h2><p><b>컴퓨터</b><br>W A S D 또는 방향키로 걷고, 화면을 드래그하거나 Q · E로 시점을 돌려요. Shift를 누르면 빨리 걷고, V를 누르면 카메라 시점이 바뀌어요.</p><p><b>모바일</b><br>왼쪽 조이스틱으로 걷고, 화면을 드래그해 둘러보세요. 오른쪽 위에서 후방 3인칭, 1인칭, 정면 3인칭을 선택할 수 있어요.</p><p><b>팀 부지</b><br>벽돌 테두리 가까이 가면 꾸미기 버튼이 나타나요. 팀 편집 코드를 공유하면 팀원들이 같은 부지를 함께 꾸밀 수 있어요.</p><a href="/scene-assets/starlit-courtyard.blend" download>월드 블렌더 원본 받기</a><p><b>ThreeRT 네이티브 장면</b><br>하드웨어 레이트레이싱으로 광장을 둘러볼 수 있어요. 팀 부지 편집은 웹 광장에서 진행해요.</p><div class="native-links"><a href="threerts://osc-starlit-courtyard.bentivoglio0806.chatgpt.site/scene-assets/threert/" target="_blank" rel="noopener">ThreeRT 앱에서 열기</a><a href="/scene-assets/starlit-threert.zip" download>장면 파일 받기</a></div>')}
 $('help').onclick=help;
-function frame(p){nearest=plots.map(v=>({...v,d:Math.hypot(p.x-v.x,p.z-v.z)})).sort((a,b)=>a.d-b.d)[0];$('location').textContent=nearest.d<6?nearest.id+' 부지':Math.abs(p.x)>12?(p.x<0?'A 산책로':'B 산책로'):'별빛광장';$('editNearby').hidden=nearest.d>6.2;$('editNearby').textContent=nearest.id+' 부지 꾸미기'}
+const drawMinimap=createMinimap($('minimap'));
+function frame(p){
+  drawMinimap(p);
+  let place=null,distance=Infinity;
+  for(const plot of plots){
+    const d=Math.hypot(p.x-plot.x,p.z-plot.z);
+    if(d<distance){place=plot;distance=d;}
+  }
+  if(place!==nearest)$('editNearby').textContent=place.id+' 부지 꾸미기';
+  nearest=place;$('editNearby').hidden=distance>6.2;
+}
 function applyProfiles(snapshot){
   for(const player of snapshot.players){
     const cached=profileCache.get(player.id);
@@ -149,7 +160,7 @@ $('join').onsubmit=async e=>{
     if(!world){const {startWorld}=await import('./play.js');world=await startWorld(frame);}
     const p=await api('join',{...settings,arrival:true});
     save('name',name);save('bio',bio);
-    world.start({...p,...settings});
+    world.start({...p,...settings});frame(world.player);
     $('profile').hidden=true;$('hud').hidden=false;
     preview?.dispose();preview=null;await sync();
   }catch(error){$('joinStatus').textContent='입장하지 못했어요. '+(error.message||'연결을 확인해 주세요.');}
