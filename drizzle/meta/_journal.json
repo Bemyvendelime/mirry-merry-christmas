@@ -29,6 +29,13 @@
       "when": 1795438841568,
       "tag": "0003_cottage_rooms",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795440529422,
+      "tag": "0004_crowd_presence",
+      "breakpoints": true
     }
   ]
 }

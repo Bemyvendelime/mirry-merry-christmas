@@ -73,3 +73,30 @@ export function decodeSubject(token){
   }
   return {width:w,height:h,rgba,landmarks};
 }
+
+// Downsample RGB565 colour and silhouette in the original coordinate space.
+// Pose landmarks remain valid because the crop and aspect ratio stay fixed.
+export function previewSubject(token){
+  const src=parse(token);
+  if(!src||Math.max(src.w,src.h)<=36)return token;
+  const ratio=36/Math.max(src.w,src.h),w=Math.max(1,Math.round(src.w*ratio)),h=Math.max(1,Math.round(src.h*ratio));
+  const n=w*h,counts=new Uint16Array(n),occupied=new Uint16Array(n),sums=new Uint32Array(n*3);
+  let read=src.rgb;
+  for(let y=0;y<src.h;y++)for(let x=0;x<src.w;x++){
+    const i=y*src.w+x,j=Math.floor(y*h/src.h)*w+Math.floor(x*w/src.w);
+    counts[j]++;
+    if(!((src.packed.charCodeAt(src.start+(i>>3))>>(i%8))&1))continue;
+    const rgb=src.packed.charCodeAt(read++)*256+src.packed.charCodeAt(read++);
+    occupied[j]++;sums[3*j]+=rgb>>11;sums[3*j+1]+=(rgb>>5)&63;sums[3*j+2]+=rgb&31;
+  }
+  const start=src.start,mask=Math.ceil(n/8),bytes=new Uint8Array(start+mask+n*2);
+  bytes.set([w,h,src.hasPose]);for(let i=3;i<start;i++)bytes[i]=src.packed.charCodeAt(i);
+  let write=start+mask;
+  for(let i=0;i<n;i++){
+    const used=occupied[i];if(!used||used*3<counts[i])continue;
+    bytes[start+(i>>3)]|=1<<(i%8);
+    const rgb=Math.round(sums[i*3]/used)<<11|Math.round(sums[i*3+1]/used)<<5|Math.round(sums[i*3+2]/used);
+    bytes[write++]=rgb>>8;bytes[write++]=rgb&255;
+  }
+  return write===start+mask?token:'v2.'+btoa(String.fromCharCode(...bytes.subarray(0,write)));
+}

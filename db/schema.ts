@@ -6,7 +6,13 @@ export const visitors = sqliteTable("visitors", {
   room:text("room").notNull().default("plaza"), visit:integer("visit").notNull().default(0),
   jumpSeq:integer("jump_seq").notNull().default(0), jumpAt:integer("jump_at").notNull().default(0),
   x:real("x").notNull(), z:real("z").notNull(), yaw:real("yaw").notNull(), seen:integer("seen").notNull(),
-}, t=>[index("visitors_seen").on(t.seen)]);
+}, t=>[index("visitors_seen").on(t.seen), index("visitors_room_seen").on(t.room,t.seen)]);
+// Portrait payloads are immutable between joins. Keep them off hot movement rows.
+export const visitorAppearances=sqliteTable("visitor_appearances",{
+  id:text("id").primaryKey().references(()=>visitors.id,{onDelete:"cascade"}),
+  profileKey:text("profile_key").notNull(),
+  photo:text("photo").notNull(), preview:text("preview").notNull(), bio:text("bio").notNull()
+});
 export const teams=sqliteTable("teams",{plot:text("plot").primaryKey(),keyhash:text("keyhash").notNull()});
 export const objects=sqliteTable("objects",{
   id:text("id").primaryKey(), plot:text("plot").notNull(), slot:integer("slot").notNull(), kind:text("kind").notNull(),

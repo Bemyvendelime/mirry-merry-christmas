@@ -1,3 +1,4 @@
+import {avatarJobs} from './avatar-jobs.js';
 import * as T from 'three';
 import {advanceRig, joints, rigFinish, rodRadius, isWholeSubject} from './joint-rig.js';
 import {createSubjectModel, createSubjectSkin} from './subject-model.js';
@@ -30,11 +31,30 @@ export function createAvatars(scene) {
     subjects.delete(id);
   }
 
+  const jobs=avatarJobs(),ready=new Map();
+  const frustum=new T.Frustum(),viewProjection=new T.Matrix4(),bounds=new T.Sphere(new T.Vector3(),1.8);
+  function prepare(token,level){
+    const key=level+token;
+    if(ready.has(key)){const model=ready.get(key);ready.delete(key);return model;}
+    if(!jobs.supported)return createSubjectModel(token,{level});
+    if(!jobs.busy)jobs.run({kind:'geometry',token,level},result=>{
+      if(!result)return;
+      const {attributes,index,...model}=result,geometry=new T.BufferGeometry();
+      for(const [name,a] of Object.entries(attributes))geometry.setAttribute(name,new T.BufferAttribute(a.array,a.itemSize));
+      geometry.setIndex(new T.BufferAttribute(index,1));geometry.computeBoundingSphere();
+      for(const bone of model.rig.bones)if(bone.axis)bone.axis=new T.Vector3(bone.axis.x,bone.axis.y,bone.axis.z);
+      ready.set(key,{...model,geometry});
+      if(ready.size>4){const oldest=ready.keys().next().value;ready.get(oldest).geometry.dispose();ready.delete(oldest);}
+    });
+    return undefined;
+  }
   function bind(player,level) {
     const token=player.photo;
     let entry=modelCache[level].get(token);
     if(!entry){
-      entry={model:createSubjectModel(token,level==='low'?{level:'low'}:undefined),users:0};
+      const model=prepare(token,level);
+      if(model===undefined)return subjects.get(player.id);
+      entry={model,users:0};
       modelCache[level].set(token,entry);
     }
     entry.users++;
@@ -71,7 +91,8 @@ export function createAvatars(scene) {
     }
   }
   let generation=0;
-  function render(players,dt=.016,hideSelf=false) {
+  function render(players,dt=.016,hideSelf=false,camera) {
+    if(camera){camera.updateMatrixWorld();frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));}
     generation++;nodes.count=rods.count=0;
     const origin=players[0];
     const visible=players.slice(0,CAPACITY).map((player,i)=>({
@@ -82,6 +103,13 @@ export function createAvatars(scene) {
     for(const {player:p,distance} of visible){
       let actor=subjects.get(p.id);
       if(actor&&actor.token!==p.photo){release(p.id);actor=null;}
+      const self=p.id===origin.id;
+      bounds.center.set(p.x,(p.y||0)+.95,p.z);
+      if((self&&hideSelf)||(!self&&camera&&!frustum.intersectsSphere(bounds))){
+        if(actor?.skin)actor.skin.mesh.visible=false;
+        const tracked=states.get(p.id);if(tracked)tracked.generation=generation;
+        continue;
+      }
       const custom=isWholeSubject(p.photo);
       if(custom){
         const near=distance<(actor?.level==='high'?16:13)&&highCount<NEAR_SKINS;
@@ -93,7 +121,7 @@ export function createAvatars(scene) {
           actor=bind(p,level);builds++;
         }
       }
-      const bare=!custom||Boolean(actor&&!actor.skin);
+      const bare=!actor?.skin;
       const state=advanceRig(states.get(p.id),p.id,p.moving,Math.min(.1,Math.max(0,dt)),bare,p.airPose);
       states.set(p.id,state);state.generation=generation;
       if(actor?.skin){
@@ -102,7 +130,10 @@ export function createAvatars(scene) {
         mesh.position.set(p.x,p.y||0,p.z);
         // Subject input faces +Z. Walking yaw 0 faces the world's -Z.
         mesh.rotation.y=(p.yaw||0)+Math.PI;
-        actor.skin.update(state.phase,state.gait,state.airPose);
+        const interval=self||distance<12?0:distance<26?60:110;
+        if(!state.nextPose||start>=state.nextPose||state.airPose>.08){
+          actor.skin.update(state.phase,state.gait,state.airPose);state.nextPose=start+interval;
+        }
       }else if(bare&&!(hideSelf&&p.id===origin.id)){
         drawDefault(p,state);
       }
@@ -111,6 +142,7 @@ export function createAvatars(scene) {
     nodes.instanceMatrix.needsUpdate=true;rods.instanceMatrix.needsUpdate=true;
   }
   function dispose(){
+    jobs.dispose();for(const model of ready.values())model.geometry.dispose();ready.clear();
     for(const id of subjects.keys())release(id);
     for(const mesh of [nodes,rods]){
       scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();

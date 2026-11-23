@@ -128,7 +128,25 @@ export async function startWorld(onFrame,onJump,footsteps){
     for(const [id,label] of labels)if(!nearby.has(id)){actorRoot.remove(label);label.material.map.dispose();label.material.dispose();labels.delete(id)}
   }
   const look=new T.Vector3();
-  function render(t){const dt=Math.min((t-t0)/1000,.06);t0=t;elapsed+=dt;let dx=0,dz=0;
+  // Hysteresis keeps the pixel grid stable. Lower fill cost quickly in a busy
+  // square and restore the original sampling only after sustained headroom.
+  let detailLevel=0,meanCost=16,observations=0,calmFrames=0;
+  const resolution=[1,.84,.70,.60];
+  function accountFrame(ms,interval){
+    if(document.hidden||!Number.isFinite(ms))return;
+    const cost=Math.max(ms,interval>0&&interval<90?interval*.80:0);
+    meanCost+=.065*(Math.min(cost,100)-meanCost);observations++;
+    calmFrames=meanCost<14.5?calmFrames+1:0;
+    if(observations<30)return;
+    let next=detailLevel;
+    if(meanCost>24.5)next=Math.min(detailLevel+1,resolution.length-1);
+    else if(calmFrames>220)next=Math.max(0,detailLevel-1);
+    if(next!==detailLevel){
+      detailLevel=next;observations=0;calmFrames=0;meanCost=18;
+      if(software)renderer.setDetailScale(resolution[next]);
+    }
+  }
+  function render(t){const begin=performance.now(),interval=t-t0;const dt=Math.min(interval/1000,.06);t0=t;elapsed+=dt;let dx=0,dz=0;
     const oldX=player.x,oldZ=player.z;
     if(canMove()){
       dx=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+deltaStick.x;
@@ -152,12 +170,13 @@ export async function startWorld(onFrame,onJump,footsteps){
     animateJump(player,t);
     footsteps.walk(Math.hypot(player.x-oldX,player.z-oldZ),player.room===plazaRoom&&player.y<.001&&t-player.jumpStart>0,keys.has('ShiftLeft')||keys.has('ShiftRight'),()=>surfaceAt(player.x,player.z));
     const visible=[player];for(const r of remotes.values()){const k=Math.min(1,dt*3.6);r.moving=Math.hypot(r.tx-r.x,r.tz-r.z)>.055;r.x+=(r.tx-r.x)*k;r.z+=(r.tz-r.z)*k;r.yaw+=Math.atan2(Math.sin(r.tyaw-r.yaw),Math.cos(r.tyaw-r.yaw))*k;animateJump(r,t);visible.push(r)}
-    avatars.render(visible,dt,mode==='first');updateLabels(visible);
     placeCamera(cam,look,player,mode,heading+movementOffset,tilt,eye,dt,snap);
+    avatars.render(visible,dt,mode==='first',cam);updateLabels(visible);
     snap=false;if(player.room===plazaRoom)scenery?.update(elapsed);
-    if(!software)(player.room===shopRoom?indoorPixels:pixelRenderer).render(cam);
+    if(!software)(player.room===shopRoom?indoorPixels:pixelRenderer).render(cam,resolution[detailLevel]);
     else renderer.render(scene,cam);
-    if(t-last>90){last=t;onFrame(player)}}
+    if(t-last>90){last=t;onFrame(player)}
+    accountFrame(performance.now()-begin,interval);}
   function clearInput(){
     footsteps.reset();keys.clear();drag=null;deltaStick={x:0,y:0};stick.firstElementChild.style.transform='';
   }

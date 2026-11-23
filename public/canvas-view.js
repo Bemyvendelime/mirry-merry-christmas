@@ -15,7 +15,7 @@ export function createCanvasView(root) {
   let seed=49285;const rnd=()=>((seed=Math.imul(1664525,seed)+1013904223>>>0)/4294967296),tau=Math.PI*2;
   const textures=new Map(),props=[], pi=Math.PI;
   const architecture=createCottageCanvas(cottageExterior,cottageInterior);
-  let room='plaza';
+  let room='plaza',detailScale=1;
   const treeRect=make(390,630),tree=treeRect.getContext('2d');
   const poly=(c,pts,col)=>{c.fillStyle=col;c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fill();};
   tree.fillStyle='#624a42';tree.fillRect(183,200,23,420);
@@ -71,11 +71,39 @@ export function createCanvasView(root) {
     if(planted&&!firBed&&!clearForPlanting(p.x,p.z,p.k.startsWith('bare')?1.4:.45))props.splice(i,1);
   }
   const motes=Array.from({length:110},()=>({x:rnd()*90-45,z:rnd()*85-42,y:rnd()*12,s:rnd()}));
+  const levels=new WeakMap(),nameplates=new Map();
+  const shade=make(64,32),shadeCtx=shade.getContext('2d');
+  shadeCtx.translate(32,16);shadeCtx.scale(32,16);
+  const gradient=shadeCtx.createRadialGradient(0,0,0,0,0,1);
+  gradient.addColorStop(0,'rgba(43,47,67,.34)');gradient.addColorStop(1,'rgba(43,47,67,0)');
+  shadeCtx.fillStyle=gradient;shadeCtx.fillRect(-1,-1,2,2);
+  function scaledTexture(texture,width,height){
+    let prev=texture;
+    while(prev.width>width*2&&prev.height>height*2&&prev.width>32){
+      let next=levels.get(prev);
+      if(!next){
+        next=make(Math.max(1,Math.ceil(prev.width/2)),Math.max(1,Math.ceil(prev.height/2)));
+        next.getContext('2d').drawImage(prev,0,0,next.width,next.height);levels.set(prev,next);
+      }
+      prev=next;
+    }
+    return prev;
+  }
+  function nameplate(name){
+    let plate=nameplates.get(name);
+    if(plate)return plate;
+    const font='600 12px system-ui';ctx.font=font;
+    plate=make(Math.ceil(ctx.measureText(name).width)+12,16);
+    const c=plate.getContext('2d');c.font=font;c.textAlign='center';
+    c.fillStyle='#343545aa';c.fillRect(0,0,plate.width,16);c.fillStyle='#fff5e2';c.fillText(name,plate.width/2,12);
+    if(nameplates.size>=160)nameplates.delete(nameplates.keys().next().value);
+    nameplates.set(name,plate);return plate;
+  }
   const rigStates=new Map(), subjects=createSubjectPainter();
   let previousPoseTime=performance.now(),poseFrame=0;
   function decor(k){const b=make(100,130),c=b.getContext('2d');if(k==='pine'){c.fillStyle='#726253';c.fillRect(45,105,10,25);for(let j=0;j<4;j++)poly(c,[[50,8+j*17],[50-(19+j*8),49+j*22],[50+(19+j*8),49+j*22]],j%2?'#415b4d':'#526e5a');}else if(k==='snowman'){for(const [y,r] of [[101,28],[65,23],[33,17]]){c.beginPath();c.arc(50,y,r,0,tau);c.fillStyle='#e9edf3';c.fill();c.strokeStyle='#acb7c7';c.stroke();}c.fillStyle='#47404b';c.fillRect(34,15,32,4);c.fillRect(41,1,18,16);c.fillRect(44,30,3,3);c.fillRect(55,30,3,3);c.fillStyle='#9a4d50';c.fillRect(33,47,35,5);}else if(k==='bench'){c.fillStyle='#69534c';c.fillRect(8,61,84,11);c.fillRect(8,76,84,8);c.fillRect(8,94,84,10);c.fillStyle='#494852';c.fillRect(16,65,6,61);c.fillRect(78,65,6,61);}return b;}
   for(const k of ['pine','bench','snowman'])textures.set(k,decor(k));
-  return {scene,domElement:canvas,setRoom(value){room=value==='cottage'?'cottage':'plaza';},dispose(){loop=null;cancelAnimationFrame(raf);rigStates.clear();subjects.dispose();},setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520/W,330/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list,hideLocal=false){actors=list||[];hideSelf=hideLocal;},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
+  return {scene,domElement:canvas,setRoom(value){room=value==='cottage'?'cottage':'plaza';},dispose(){loop=null;cancelAnimationFrame(raf);rigStates.clear();subjects.dispose();},setStyle(value){style=value;this.setSize(viewW,viewH)},setPixelRatio(){},setDetailScale(value){if(value!==detailScale){detailScale=value;this.setSize(viewW,viewH);}},setSize(w,h){viewW=w;viewH=h;W=Math.max(1,Math.round(w));H=Math.max(1,Math.round(h));const pixel=style==='gaussian-pixelart';const factor=pixel?Math.min(1,520*detailScale/W,330*detailScale/H):Math.min(1,1280/W,850/H);canvas.style.imageRendering=pixel?'pixelated':'auto';canvas.width=Math.round(W*factor);canvas.height=Math.round(H*factor);canvas.style.width=W+'px';canvas.style.height=H+'px';W=canvas.width;H=canvas.height;},setActors(list,hideLocal=false){actors=list||[];hideSelf=hideLocal;},setObjects(list){objects=list||[];},setAnimationLoop(fn){loop=fn;cancelAnimationFrame(raf);const tick=t=>{if(loop){loop(t);raf=requestAnimationFrame(tick);}};if(fn)raf=requestAnimationFrame(tick);},render(_scene,camera){
     camera.updateMatrixWorld();const m=camera.matrixWorld.elements,pr=camera.projectionMatrix.elements,f=pr[5],outside=room==='plaza';
     const inv=camera.matrixWorldInverse.elements;
     if(outside)drawLandscape(ctx,m,pr,W,H,style);
@@ -102,7 +130,12 @@ export function createCanvasView(root) {
       let low=0,high=1;
       if(d0<near)low=(near-d0)/(d1-d0);
       if(d1<near)high=(near-d0)/(d1-d0);
-      const n=o.k==='tree'?Math.min(180,Math.max(52,Math.round(880/Math.max(4,treeDistance)))):8;
+      // A level camera projects a billboard exactly with one strip. Add strips
+      // only as its apparent width changes under pitch. Limit resampling to
+      // the projected pixel density, retaining the original for close views.
+      const dw=pr[0]*W*o.w/2,front=Math.max(near,Math.min(d0,d1)),back=Math.max(near,Math.max(d0,d1));
+      const n=Math.min(172,Math.max(1,Math.ceil(Math.abs(dw/front-dw/back)/1.4)));
+      tex=scaledTexture(tex,dw/front,H*f*o.h/(2*front));
       let prev=project(o.x,y0+o.h*low,o.z);
       if(!prev)return;
       for(let i=1;i<=n;i++){
@@ -158,7 +191,7 @@ export function createCanvasView(root) {
         }
       }else{
         const ground=o.y?project(o.x,0,o.z):base;
-        const side=Math.max(ww*.64,o.label?ctx.measureText(o.label).width*.5+10:0);
+        const side=Math.max(ww*.64,o.label&&base.d<20?nameplate(o.label).width*.5+4:0);
         mask=architecture.clip(ctx,Math.min(top.x,base.x,ground?.x??base.x)-side,top.y-23,
           Math.max(top.x,base.x,ground?.x??base.x)+side,Math.max(base.y,ground?.y??base.y)+14,base,top);
       }
@@ -176,10 +209,7 @@ export function createCanvasView(root) {
         const attenuation=1/(1+.58*lift);
         const shadow=Math.max(1,Math.min(ww*.40,H/ground.d*.30))*(1+.1*lift);
         const height=Math.max(1,Math.min(shadow*.36,12));
-        ctx.save();ctx.translate(ground.x,ground.y+1);ctx.scale(shadow,height);
-        const fog=ctx.createRadialGradient(0,0,0,0,0,1);
-        fog.addColorStop(0,'rgba(43,47,67,'+(.34*attenuation)+')');fog.addColorStop(1,'rgba(43,47,67,0)');
-        ctx.fillStyle=fog;ctx.fillRect(-1,-1,2,2);ctx.restore();
+        ctx.globalAlpha=attenuation;ctx.drawImage(shade,ground.x-shadow,ground.y+1-height,2*shadow,2*height);ctx.globalAlpha=1;
       }
       if(o.actor){
         const actor=o.actor,angle=actor.yaw||0,cos=Math.cos(angle),sin=Math.sin(angle);
@@ -199,7 +229,7 @@ export function createCanvasView(root) {
         }
       }else ctx.drawImage(tex,left,top.y,ww,tall);
       if(isLamp&&detailed.has('lamp')&&o.zone){const bw=tall*.117,bh=tall*.198,bx=left+ww*.76-bw,by=top.y+tall*.48;ctx.lineWidth=Math.max(1,tall*.008);ctx.strokeStyle='#6e5c49';ctx.beginPath();ctx.moveTo(bx-ww*.04,by);ctx.lineTo(bx+bw+ww*.06,by);ctx.stroke();poly(ctx,[[bx,by],[bx+bw,by],[bx+bw*.98,by+bh],[bx+bw*.5,by+bh*.88],[bx,by+bh]],districtColors[o.zone]);ctx.fillStyle='#eee6d0';ctx.font=`${Math.round(tall*.085)}px Georgia`;ctx.textAlign='center';ctx.fillText(o.zone,bx+bw*.5,by+bh*.65);}
-      if(o.label&&base.d<20){ctx.font='600 12px system-ui';ctx.textAlign='center';const lw=ctx.measureText(o.label).width+12;ctx.fillStyle='#343545aa';ctx.fillRect(base.x-lw/2,top.y-16,lw,16);ctx.fillStyle='#fff5e2';ctx.fillText(o.label,base.x,top.y-4);}
+      if(o.label&&base.d<20){const plate=nameplate(o.label);ctx.drawImage(plate,Math.round(base.x-plate.width/2),Math.round(top.y-16));}
       }finally{if(mask===2)ctx.restore();}
     }
     for(const c of curbs)if(c.depth<(project(0,0,0)?.d||0))drawCurb(c);

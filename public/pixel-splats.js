@@ -192,15 +192,16 @@ export function createPixelSplats(renderer, scene) {
     object.visible=false;
   }
   return {
-    render(camera) {
+    render(camera,detailScale=1) {
       renderer.getDrawingBufferSize(bufferSize);
       const scale=Math.max(2,Math.ceil(Math.max(bufferSize.x/540,bufferSize.y/390)));
-      const width=Math.max(1,Math.ceil(bufferSize.x/scale)), height=Math.max(1,Math.ceil(bufferSize.y/scale));
+      const width=Math.max(1,Math.ceil(bufferSize.x/scale*detailScale)), height=Math.max(1,Math.ceil(bufferSize.y/scale*detailScale));
+      const samples=detailScale<.84?1:2;
       if (pixels.width!==width || pixels.height!==height) {
-        source.setSize(width*2,height*2);
+        source.setSize(width*samples,height*samples);
         pixels.setSize(width,height);
         viewportSize.set(source.width,source.height);
-        post.setSizes(width,height,1,2);
+        post.setSizes(width,height,1,samples);
       }
       const previousTarget=renderer.getRenderTarget();
       const glowValues=glows.map(o=>o.material.uniforms.vh.value);

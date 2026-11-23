@@ -10,7 +10,8 @@ const save=(k,v)=>{try{localStorage.setItem('osc-'+k,v)}catch{}};
 let world,state={players:[],objects:[],claimed:[]},nearest=null,online=false,timer,settings;
 const profileCache=new Map();
 const footsteps=createFootsteps($('footSound'));
-let epoch=0,doorPending=false;
+let epoch=0,doorPending=false,loadingProfiles=false;
+let rosterKey='',roster=[],layoutRev=-1,afterMessage=0;
 const roomContext=()=>({room:world?.player.room??plazaRoom,visit:world?.player.visit??0});
 const chat=setupChat(api,roomContext,()=>world?.focus());
 let profilePhoto='',photoRequest=0,preview,previewModule,converting=false,joining=false;
@@ -178,16 +179,47 @@ function applyProfiles(snapshot){
   }
   world.apply(snapshot);
 }
-async function syncProfiles(snapshot,generation){
-  const ids=new Set(snapshot.players.map(p=>p.id));
-  for(const id of profileCache.keys())if(!ids.has(id))profileCache.delete(id);
-  const pending=snapshot.players.filter(p=>p.id!==world.player.id&&p.profileKey&&profileCache.get(p.id)?.profileKey!==p.profileKey);
-  for(let i=0;i<pending.length;i+=32){
-    const {profiles}=await api('profiles',{ids:pending.slice(i,i+32).map(p=>p.id)});
+async function syncProfiles(generation){
+  if(loadingProfiles)return;
+  const me=world.player;
+  const distance=p=>(p.x-me.x)**2+(p.z-me.z)**2;
+  const ordered=state.players.filter(p=>p.id!==me.id&&p.profileKey).sort((a,b)=>distance(a)-distance(b));
+  // Full portraits go to the nearest group. A compact volumetric subject keeps
+  // every other visitor recognizable and is upgraded when they approach.
+  const close=ordered.slice(0,12).filter(p=>distance(p)<=16*16);
+  const needs=(p,full)=>{
+    const prev=profileCache.get(p.id);
+    return prev?.profileKey!==p.profileKey||(full&&prev.lite);
+  };
+  let missing=close.filter(p=>needs(p,true));
+  const lite=!missing.length;
+  if(lite)missing=ordered.filter(p=>needs(p,false));
+  if(!missing.length)return;
+  loadingProfiles=true;
+  try{
+    const {profiles}=await api('profiles',{ids:missing.slice(0,6).map(p=>p.id),lite});
     if(generation!==epoch)return;
-    for(const p of profiles)profileCache.set(p.id,p);
+    for(const p of profiles){
+      profileCache.delete(p.id);profileCache.set(p.id,{...p,lite});
+      if(profileCache.size>160)profileCache.delete(profileCache.keys().next().value);
+    }
+    if(profiles.length)applyProfiles(state);
+    if(profiles.length)setTimeout(()=>{if(generation===epoch&&!doorPending)syncProfiles(generation);},240);
+  }catch{}finally{loadingProfiles=false;}
+}
+function unpackSnapshot(packet){
+  if(packet.players)return packet;
+  if(packet.roster){rosterKey=packet.rosterKey;roster=packet.roster;}
+  if(rosterKey!==packet.rosterKey||roster.length!==packet.poses.length){
+    rosterKey='';throw Error('참가자 목록을 다시 받고 있어요.');
   }
-  if(pending.length&&generation===epoch)applyProfiles(snapshot);
+  const players=packet.poses.map(([x,z,yaw,jumpSeq=0,jumpAt=0],i)=>{
+    const [id,name,color,profileKey]=roster[i];
+    return {id,name,color,profileKey,x:x/100,z:z/100,yaw:yaw/1000,jumpSeq,jumpAt};
+  });
+  layoutRev=packet.layoutRev;
+  if(packet.messages.length)afterMessage=packet.messages.at(-1).id;
+  return {...packet,players,objects:packet.objects??state.objects,claimed:packet.claimed??state.claimed};
 }
 function roomHUD(room){
   const indoor=room===shopRoom;
@@ -197,7 +229,7 @@ function roomHUD(room){
   chat.enter(indoor);frame(world.player);
 }
 function changeRoom(position){
-  epoch++;clearTimeout(timer);profileCache.clear();online=false;
+  epoch++;clearTimeout(timer);online=false;rosterKey='';roster=[];layoutRev=-1;afterMessage=0;
   state={players:[],objects:[],claimed:[],messages:[]};
   world.setRoom(position);roomHUD(position.room);
 }
@@ -206,15 +238,15 @@ function scheduleSync(delay){
 }
 async function sync(){
   const generation=epoch;
-  let wait=900;
+  let wait=850+Math.random()*100;
   try{
     const {x,z,yaw,jumpSeq,jumpStart}=world.player;
-    const snapshot=await api('sync',{x,z,yaw,jumpSeq:performance.now()-jumpStart<2400?jumpSeq:0});
+    const packet=await api('sync',{wire:2,rosterKey,layoutRev,afterMessage,x,z,yaw,jumpSeq:performance.now()-jumpStart<2400?jumpSeq:0});
     if(generation!==epoch||doorPending)return;
-    state=snapshot;applyProfiles(snapshot);online=true;
+    const snapshot=unpackSnapshot(packet);state=snapshot;applyProfiles(snapshot);online=true;
     $('presence').textContent=(snapshot.room===shopRoom?'오두막':'광장')+' · '+snapshot.players.length+'명';
     $('notice').textContent='';chat.display(snapshot.messages);
-    await syncProfiles(snapshot,generation).catch(()=>{});
+    syncProfiles(generation);
   }catch(e){
     if(generation!==epoch||doorPending)return;
     online=false;$('presence').textContent='재연결 중';$('notice').textContent='월드에 다시 연결하고 있어요.';wait=2200;

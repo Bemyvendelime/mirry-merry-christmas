@@ -1,5 +1,6 @@
 // Local-space joint asset. A pose is forward kinematics on the parent chain,
 // shared by the GPU, the software view and the profile turntable. Metres, Y up.
+import {avatarJobs} from './avatar-jobs.js';
 import {createSubjectModel, deformSubject} from './subject-model.js';
 
 export const isWholeSubject=token=>typeof token==='string'&&token.startsWith('v2.');
@@ -139,7 +140,7 @@ const period=(angle,n)=>((Math.round(angle*n/TAU)%n)+n)%n;
 // Software views come from the same indexed, skinned surface as WebGL.
 // Orthographic tiles use a depth buffer, so arms, legs and concave openings
 // occlude in the correct order even at the rear and side of a subject.
-function subjectRaster(entry,view){
+export function projectSubject(entry,view){
   const {model,posed,projected,colours}=entry;
   const positions=deformSubject(model,view.phase,view.gait,posed,view.tuck);
   const cy=Math.cos(view.yaw),sy=Math.sin(view.yaw),cp=Math.cos(view.pitch),sp=Math.sin(view.pitch);
@@ -152,10 +153,7 @@ function subjectRaster(entry,view){
   }
   const scale=view.resolution/Math.max(.05,maxX-minX,maxY-minY);
   const width=Math.ceil((maxX-minX)*scale)+4,height=Math.ceil((maxY-minY)*scale)+4;
-  const canvas=document.createElement('canvas');
-  canvas.width=width;canvas.height=height;
-  const context=canvas.getContext('2d'),pixels=context.createImageData(width,height);
-  const data=pixels.data,depthBuffer=new Float32Array(width*height);
+  const data=new Uint8ClampedArray(width*height*4),depthBuffer=new Float32Array(width*height);
   depthBuffer.fill(-Infinity);
   for(let k=0;k<projected.length;k+=3){
     projected[k]=(projected[k]-minX)*scale+2;
@@ -188,15 +186,39 @@ function subjectRaster(entry,view){
       }
     }
   }
-  context.putImageData(pixels,0,0);
-  return {canvas,left:minX-2/scale,top:maxY+2/scale,width:width/scale,height:height/scale,view};
+  return {rgba:data,cols:width,rows:height,left:minX-2/scale,top:maxY+2/scale,width:width/scale,height:height/scale,view};
+}
+
+export function prepareRaster(token,preview){
+  const model=createSubjectModel(token,preview?undefined:{level:'low'});
+  const e={token,model,views:new Map(),seen:0};
+  if(model){
+    const attrs=model.geometry.attributes,count=attrs.position.count;
+    e.posed=new Float32Array(count*3);e.projected=new Float32Array(count*3);e.colours=new Uint8Array(count*3);
+    for(let i=0;i<count;i++){
+      const shade=.85+.15*Math.max(0,.48*attrs.normal.getY(i)+.78*attrs.normal.getZ(i)-.26*attrs.normal.getX(i));
+      e.colours[i*3]=srgb(attrs.color.getX(i)*shade);
+      e.colours[i*3+1]=srgb(attrs.color.getY(i)*shade);
+      e.colours[i*3+2]=srgb(attrs.color.getZ(i)*shade);
+    }
+  }
+  return e;
+}
+
+function tileCanvas({rgba,cols,rows,...tile}){
+  const canvas=document.createElement('canvas');canvas.width=cols;canvas.height=rows;
+  const ctx=canvas.getContext('2d');
+  const image=ctx.createImageData(cols,rows);image.data.set(rgba);ctx.putImageData(image,0,0);
+  return {...tile,canvas};
 }
 
 // Each visible subject keeps its last available projection. A shared FIFO
 // advances missed angles/poses over multiple frames under a small CPU budget.
 export function createSubjectPainter(preview=false){
   const subjects=new Map(),queue=new Map(),tiles=new Map();
-  let frame=0,memory=0;
+  let remaining=0,priority=null;
+  let frame=0,memory=0,disposed=false;
+  const jobs=avatarJobs();
   const budget=preview?3*1024*1024:12*1024*1024;
   function removeTile(tile){
     tiles.delete(tile);
@@ -205,20 +227,10 @@ export function createSubjectPainter(preview=false){
   }
   function acquire(token){
     let e=subjects.get(token);
-    if(e)return e;
-    const model=createSubjectModel(token,preview?undefined:{level:'low'});
-    e={token,model,views:new Map(),seen:frame};
-    if(model){
-      const attrs=model.geometry.attributes,count=attrs.position.count;
-      e.posed=new Float32Array(count*3);e.projected=new Float32Array(count*3);e.colours=new Uint8Array(count*3);
-      for(let i=0;i<count;i++){
-        const shade=.85+.15*Math.max(0,.48*attrs.normal.getY(i)+.78*attrs.normal.getZ(i)-.26*attrs.normal.getX(i));
-        e.colours[i*3]=srgb(attrs.color.getX(i)*shade);
-        e.colours[i*3+1]=srgb(attrs.color.getY(i)*shade);
-        e.colours[i*3+2]=srgb(attrs.color.getZ(i)*shade);
-      }
+    if(!e||e.remote){
+      const old=e;e=prepareRaster(token,preview);if(old)e.views=old.views;subjects.set(token,e);
     }
-    subjects.set(token,e);return e;
+    return e;
   }
   function evict(token,e){
     for(const tile of e.views.values())removeTile(tile);
@@ -229,21 +241,42 @@ export function createSubjectPainter(preview=false){
     if(!e.model)return null;
     const cached=e.views.get(view.key);
     if(cached)return cached;
-    const tile=subjectRaster(e,view);
+    return remember(e,view,tileCanvas(projectSubject(e,view)));
+  }
+  function remember(e,view,tile){
     tile.key=view.key;tile.entry=e;e.views.set(view.key,tile);tiles.set(tile,true);
     memory+=tile.canvas.width*tile.canvas.height*4;
     while(memory>budget&&tiles.size>1)removeTile(tiles.keys().next().value);
     return tile;
   }
   function beginFrame(){
-    frame++;
+    frame++;remaining=jobs.busy?5:6;
     if(frame%60===0){
       for(const [key,e] of subjects)if(frame-e.seen>90)evict(key,e);
     }
+    drain();
+  }
+  function drain(){
+    if(disposed||jobs.busy||(jobs.supported&&remaining===0))return;
+    // Prioritize the local avatar before regenerating
+    // cached poses. Bound main-thread bitmap uploads on slow devices.
+    const next=priority&&queue.has(priority)?priority:undefined;
+    priority=null;
     const start=performance.now();
-    for(const [key,job] of queue){
-      queue.delete(key);
-      if(frame-job.frame>15)continue;
+    while(queue.size){
+      const key=next&&queue.has(next)?next:queue.keys().next().value;
+      const job=queue.get(key);queue.delete(key);
+      if(frame-job.frame>15||subjects.get(key)?.views.has(job.view.key))continue;
+      if(!preview&&jobs.supported){
+        const launched=jobs.run({kind:'tile',token:key,view:job.view},result=>{
+          if(disposed||!result)return;
+          let e=subjects.get(key);
+          if(!e){e={token:key,remote:true,views:new Map()};subjects.set(key,e);}
+          e.seen=frame;if(!e.views.has(job.view.key))remember(e,job.view,tileCanvas(result));
+          drain();
+        });
+        if(launched){remaining--;break;}
+      }
       build(job.token,job.view);
       if(performance.now()-start>=4)break;
     }
@@ -251,8 +284,9 @@ export function createSubjectPainter(preview=false){
   function get(token,yaw,pitch,phase,gait,pixels=70,immediate=false,airPose=0){
     if(!isWholeSubject(token))return null;
     const e=subjects.get(token);
-    if(e){e.seen=frame;if(!e.model)return null;}
-    const yawCount=preview?96:24,phaseCount=preview?24:6;
+    if(e){e.seen=frame;if(!e.model&&!e.remote)return null;}
+    const distant=!preview&&!immediate&&pixels<32;
+    const yawCount=preview?96:distant?12:24,phaseCount=preview?24:distant?3:6;
     // Two air silhouettes per view replace the walking cycle while airborne.
     // Vertical travel is projected separately and never becomes a cache key.
     const tuck=airPose>.70?1:airPose>.16?.5:0;
@@ -260,14 +294,15 @@ export function createSubjectPainter(preview=false){
     const incline=Math.round(Math.max(-1.42,Math.min(1.42,pitch))/(Math.PI/24));
     const effort=tuck||gait<.16?0:gait<.66?.55:1;
     const resolution=preview?224:pixels>85?104:pixels>32?64:32;
-    const key=[angle,incline,step,effort,tuck,resolution].join('/');
+    const key=[yawCount,angle,incline,step,effort,tuck,resolution].join('/');
     let tile=e?.views.get(key);
     if(!tile){
       const view={key,tuck,yaw:angle*TAU/yawCount,pitch:incline*Math.PI/24,phase:step*TAU/phaseCount,gait:effort,resolution};
-      if(immediate||preview){tile=build(token,view);}
+      if(preview||(immediate&&!jobs.supported)){tile=build(token,view);}
       else{
         // One queued job per subject avoids generating stale intermediate walk poses.
         queue.set(token,{token,view,frame});
+        if(immediate)priority=token;
         let score=Infinity;
         if(e)for(const candidate of e.views.values()){
           const v=candidate.view;
@@ -280,7 +315,7 @@ export function createSubjectPainter(preview=false){
     if(tile){tiles.delete(tile);tiles.set(tile,true);}
     return tile||null;
   }
-  function dispose(){queue.clear();for(const [token,e] of subjects)evict(token,e);}
+  function dispose(){disposed=true;jobs.dispose();queue.clear();for(const [token,e] of subjects)evict(token,e);}
   return {beginFrame,get,dispose};
 }
 
