@@ -1,4 +1,41 @@
-# vinext-starter
+# Mirry Merry Christmas
+
+OSC 크리스마스 워크숍용 멀티플레이어 3D 월드입니다. 중앙 트리에서 다섯 거리로 이동해 팀 부지를 꾸미고 A1 오두막에서는 같은 방 참가자와 대화할 수 있습니다.
+
+[배포된 월드 열기](https://osc-starlit-courtyard.bentivoglio0806.chatgpt.site/)
+
+## 처음 실행하기
+
+Node.js 22.13 이상과 npm을 사용합니다. 처음 내려받은 디렉터리에서 다음 순서로 실행하세요.
+
+```sh
+npm ci
+npm run build
+```
+
+처음 만드는 로컬 DB에는 `drizzle/`의 SQL 파일을 번호순으로 한 번씩 적용하세요. macOS, Linux 또는 Git Bash에서는 아래 명령을 사용할 수 있습니다.
+
+```sh
+for migration in drizzle/*.sql; do
+  node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file "$migration" || break
+done
+npm start
+```
+
+터미널에 표시되는 주소로 접속하세요. 100명 동시 접속을 로컬에서 다시 시험하려면 `node scripts/benchmark-crowd.mjs 180`을 실행하세요. 벤치마크는 별도의 임시 데이터베이스를 사용합니다.
+
+## 함께 수정할 곳
+
+| 작업 | 파일 |
+| --- | --- |
+| 거리와 부지 배치 | `public/layout.js` |
+| A1 오두막 외관과 실내 | `public/winter-cottage.js` |
+| 조작과 카메라 | `public/play.js`, `public/world-camera.js` |
+| 아바타 렌더링 | `public/avatars.js`, `public/joint-rig.js` |
+| 참가자 동기화, 채팅, 팀 편집 | `lib/world-api.mjs` |
+| DB 스키마와 마이그레이션 | `db/schema.ts`, `drizzle/` |
+
+## 기반 프로젝트와 배포 도구
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 
